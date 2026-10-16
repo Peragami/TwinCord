@@ -100,7 +100,18 @@ public partial class SettingsWindow : Window
         finally
         {
             DiagButton.IsEnabled = true;
+            DiagCopyButton.IsEnabled = DiagResult.Text.Length > 0;
         }
+    }
+
+    private void DiagCopyButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (DiagResult.Text.Length > 0)
+                System.Windows.Clipboard.SetText(DiagResult.Text);
+        }
+        catch { }
     }
 
     private void ExportButton_Click(object sender, RoutedEventArgs e)
