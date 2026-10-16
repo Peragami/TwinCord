@@ -289,6 +289,8 @@ public partial class MainWindow : Window
         await view.EnsureCoreWebView2Async(env);
         // 読み込み中から非表示側は絞っておく(起動ピークの抑制。表示切替時にRefreshされる)
         SetMemoryLevel(view, n != _current);
+        // リンクホバー時の左下URLプレビュー(ステータスバー)を出さない
+        try { view.CoreWebView2.Settings.IsStatusBarEnabled = false; } catch { }
         SetZoom(view, zoom);
         try
         {
