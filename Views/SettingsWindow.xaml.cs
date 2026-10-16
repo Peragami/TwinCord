@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Controls;
 using Microsoft.Web.WebView2.Core;
 
 namespace TwinCord;
