@@ -1200,6 +1200,35 @@ public partial class MainWindow : Window
         SettingsButton.ToolTip = bad ? "設定(要確認: 動作しなくなった機能があります)" : "設定";
     }
 
+    // TEMP: ダウンロードボタン特定用DOMダンプ(特定後に削除)
+    private const string DumpScript =
+        "(()=>{try{var out=[];var els=document.querySelectorAll('nav button,nav a,nav [role=\"button\"],button,a');for(var i=0;i<els.length&&out.length<150;i++){var el=els[i];var g=function(n){try{return el.getAttribute(n)||'';}catch(x){return '';};};var tx='';try{tx=(el.textContent||'').trim().substring(0,30);}catch(x){}var cn='';try{cn=(el.className&&el.className.substring?el.className.substring(0,60):'');}catch(x){}out.push({tag:el.tagName,label:g('aria-label'),title:g('title'),text:tx,href:g('href'),cls:cn});}return JSON.stringify(out);}catch(e){return 'ERR:'+e;}})()";
+
+    private async Task<string> DumpCandidatesAsync(
+        string label, Microsoft.Web.WebView2.Wpf.WebView2 view, bool ready)
+    {
+        if (!ready || view.CoreWebView2 is null) return $"{label} DOM: 未起動";
+        try
+        {
+            var raw = await view.CoreWebView2.ExecuteScriptAsync(DumpScript);
+            var json = JsonSerializer.Deserialize<string>(raw);
+            if (string.IsNullOrEmpty(json)) return $"{label} DOM: 空";
+            using var doc = JsonDocument.Parse(json);
+            var sb = new StringBuilder();
+            sb.AppendLine($"{label} DOMダンプ:");
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                string Get(string k) => el.TryGetProperty(k, out var v) ? (v.GetString() ?? "") : "";
+                sb.AppendLine($"- {Get("tag")} label='{Get("label")}' title='{Get("title")}' text='{Get("text")}' href='{Get("href")}' cls='{Get("cls")}'");
+            }
+            return sb.ToString().TrimEnd();
+        }
+        catch (Exception ex)
+        {
+            return $"{label} DOM: 取得失敗({ex.GetType().Name})";
+        }
+    }
+
     private async Task<string> RunDiagnosticsAsync()
     {
         var sb = new StringBuilder();
@@ -1220,6 +1249,7 @@ public partial class MainWindow : Window
         }
         sb.AppendLine(await CheckViewAsync("Acc1", View1, _view1Ready, _settings.Zoom1));
         sb.AppendLine(await CheckViewAsync("Acc2", View2, _view2Ready, _settings.Zoom2));
+        sb.AppendLine(await DumpCandidatesAsync("Acc1", View1, _view1Ready));
         var bad = _diag.DegradedKeys();
         sb.Append("劣化中の機能: ");
         sb.AppendLine(bad.Count == 0 ? "なし" : string.Join(", ", bad.Select(Diagnostics.DisplayName)));
