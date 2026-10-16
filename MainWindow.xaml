@@ -1,0 +1,144 @@
+﻿<Window x:Class="TwinCord.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:local="clr-namespace:TwinCord"
+        mc:Ignorable="d"
+        Title="TwinCord" Height="900" Width="1200"
+        Background="#1E1F22">
+    <Window.Resources>
+        <Style x:Key="AccountButton" TargetType="Button">
+            <Setter Property="Width" Value="48" />
+            <Setter Property="Height" Value="48" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#2B2D31" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="24">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#5865F2" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="RailToolButton" TargetType="Button">
+            <Setter Property="Width" Value="48" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="Foreground" Value="#B5BAC1" />
+            <Setter Property="Background" Value="#2B2D31" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+        </Style>
+    </Window.Resources>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="76" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Discord風サーバーリスト -->
+        <StackPanel Grid.Column="0" Background="#1E1F22">
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border x:Name="Pill1" Grid.Column="0" Width="4" Height="32"
+                        Background="White" CornerRadius="2"
+                        VerticalAlignment="Center" Visibility="Visible" />
+                <Button Grid.Column="1" x:Name="Acc1Button" Style="{StaticResource AccountButton}"
+                        Content="A" ToolTip="Acc1"
+                        Click="Acc1Button_Click" MouseDoubleClick="Acc_DoubleClick">
+                    <Button.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="ミュート切替" Click="MuteAcc1_Click" />
+                            <MenuItem Header="名前の変更" Click="RenameAcc1_Click" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+                <Border x:Name="Badge1" Grid.Column="1" Background="#F23F43" CornerRadius="10"
+                        MinWidth="22" Height="22" Padding="6,0" Margin="0,-8,4,0"
+                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Visibility="Collapsed" IsHitTestVisible="False">
+                    <TextBlock x:Name="Badge1Text" Foreground="White" FontSize="12"
+                               FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+            </Grid>
+            <TextBlock x:Name="Acc1Label" Text="Acc1" Foreground="#B5BAC1" FontSize="11"
+                       TextAlignment="Center" Margin="4,4,4,0"
+                       TextTrimming="CharacterEllipsis" MouseLeftButtonDown="Acc1Label_Click">
+                <TextBlock.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="ミュート切替" Click="MuteAcc1_Click" />
+                        <MenuItem Header="名前の変更" Click="RenameAcc1_Click" />
+                    </ContextMenu>
+                </TextBlock.ContextMenu>
+            </TextBlock>
+
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border x:Name="Pill2" Grid.Column="0" Width="4" Height="32"
+                        Background="White" CornerRadius="2"
+                        VerticalAlignment="Center" Visibility="Collapsed" />
+                <Button Grid.Column="1" x:Name="Acc2Button" Style="{StaticResource AccountButton}"
+                        Content="B" ToolTip="Acc2"
+                        Click="Acc2Button_Click" MouseDoubleClick="Acc_DoubleClick">
+                    <Button.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="ミュート切替" Click="MuteAcc2_Click" />
+                            <MenuItem Header="名前の変更" Click="RenameAcc2_Click" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+                <Border x:Name="Badge2" Grid.Column="1" Background="#F23F43" CornerRadius="10"
+                        MinWidth="22" Height="22" Padding="6,0" Margin="0,-8,4,0"
+                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Visibility="Collapsed" IsHitTestVisible="False">
+                    <TextBlock x:Name="Badge2Text" Foreground="White" FontSize="12"
+                               FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+            </Grid>
+            <TextBlock x:Name="Acc2Label" Text="Acc2" Foreground="#B5BAC1" FontSize="11"
+                       TextAlignment="Center" Margin="4,4,4,0"
+                       TextTrimming="CharacterEllipsis" MouseLeftButtonDown="Acc2Label_Click">
+                <TextBlock.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="ミュート切替" Click="MuteAcc2_Click" />
+                        <MenuItem Header="名前の変更" Click="RenameAcc2_Click" />
+                    </ContextMenu>
+                </TextBlock.ContextMenu>
+            </TextBlock>
+
+            <Button x:Name="ReloadButton" Style="{StaticResource RailToolButton}"
+                    Content="&#x21BB;" ToolTip="表示中を再読み込み(メモリ解放)"
+                    Margin="0,24,0,0" Click="ReloadButton_Click" />
+            <Button x:Name="SettingsButton" Style="{StaticResource RailToolButton}"
+                    Content="&#x2699;" ToolTip="設定"
+                    Margin="0,8,0,0" Click="SettingsButton_Click" />
+        </StackPanel>
+
+        <!-- Discord本体 -->
+        <Grid Grid.Column="1" Background="#313338">
+            <wv2:WebView2 x:Name="View1" DefaultBackgroundColor="#FF313338" />
+            <wv2:WebView2 x:Name="View2" Visibility="Collapsed" DefaultBackgroundColor="#FF313338" />
+        </Grid>
+    </Grid>
+</Window>
