@@ -596,18 +596,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private static int CompareVersions(string a, string b)
-    {
-        try
-        {
-            return new Version(a.Split('-')[0]).CompareTo(new Version(b.Split('-')[0]));
-        }
-        catch
-        {
-            return 0;
-        }
-    }
-
     // ---- 起動時更新確認・ワンクリック更新 ----
 
     private UpdateInfo? _pendingUpdate;
@@ -768,8 +756,9 @@ public partial class MainWindow : Window
             using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
                 @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
             if (key is null) return;
+            var exe = Environment.ProcessPath ?? "";
             if (enable)
-                key.SetValue("TwinCord", Environment.ProcessPath ?? "");
+                key.SetValue("TwinCord", "\"" + exe + "\"");
             else
                 key.DeleteValue("TwinCord", false);
         }
