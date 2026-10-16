@@ -1,0 +1,82 @@
+<Window x:Class="TwinCord.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="設定" Height="560" Width="440"
+        WindowStartupLocation="CenterOwner" ResizeMode="CanResize"
+        MinWidth="360" MinHeight="400"
+        Background="#2B2D31" Foreground="#DBDEE1">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TabControl Grid.Row="0">
+            <TabItem Header="一般">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="12">
+                    <CheckBox x:Name="StartBox" Content="Windows起動時に自動開始" Margin="0,4" />
+                    <CheckBox x:Name="TrayBox" Content="閉じるボタンでトレイに格納する" Margin="0,4" />
+                    <CheckBox x:Name="BadgeBox" Content="非表示アカウントの未読バッジを表示" Margin="0,4" />
+                    <CheckBox x:Name="ReloadBox" Content="応答停止時に自動再読み込み" Margin="0,4" />
+                    <TextBlock Text="設定の持ち運び:" FontWeight="Bold" Margin="0,12,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <Button x:Name="ExportButton" Content="エクスポート" Width="110" Click="ExportButton_Click" />
+                        <Button x:Name="ImportButton" Content="インポート" Width="110" Margin="8,0,0,0" Click="ImportButton_Click" />
+                    </StackPanel>
+                    <TextBlock x:Name="TransferResult" TextWrapping="Wrap" Margin="0,4,0,0" FontSize="11" />
+                    <TextBlock Text="通知テスト:" FontWeight="Bold" Margin="0,12,0,0" />
+                    <Button x:Name="TestNotifyButton" Content="テスト通知を送る" Width="140"
+                            HorizontalAlignment="Left" Margin="0,4,0,0" Click="TestNotifyButton_Click" />
+                </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="表示">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="12">
+                    <TextBlock Text="Acc1 の拡大率" FontWeight="Bold" />
+                    <DockPanel Margin="0,4,0,0">
+                        <TextBlock x:Name="Zoom1Value" Text="100%" Width="48" VerticalAlignment="Center" />
+                        <Slider x:Name="Zoom1Slider" Minimum="0.5" Maximum="2.0" TickFrequency="0.05"
+                                IsSnapToTickEnabled="True" ValueChanged="ZoomSlider_Changed" />
+                    </DockPanel>
+                    <TextBlock Text="Acc2 の拡大率" FontWeight="Bold" Margin="0,16,0,0" />
+                    <DockPanel Margin="0,4,0,0">
+                        <TextBlock x:Name="Zoom2Value" Text="100%" Width="48" VerticalAlignment="Center" />
+                        <Slider x:Name="Zoom2Slider" Minimum="0.5" Maximum="2.0" TickFrequency="0.05"
+                                IsSnapToTickEnabled="True" ValueChanged="ZoomSlider_Changed" />
+                    </DockPanel>
+                </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="アプリについて">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="12">
+                    <TextBlock Text="TwinCord" FontSize="20" FontWeight="Bold" />
+                    <TextBlock x:Name="VersionText" Text="バージョン:" Margin="0,8,0,0" />
+                    <TextBlock Text="2アカウント同時常駐の軽量Discordラッパー" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    <TextBlock Text="データフォルダ:" FontWeight="Bold" Margin="0,12,0,0" />
+                    <TextBlock x:Name="DataText" TextWrapping="Wrap" />
+                    <TextBlock Text="WebView2ランタイム:" FontWeight="Bold" Margin="0,12,0,0" />
+                    <TextBlock x:Name="RuntimeText" TextWrapping="Wrap" />
+                    <TextBlock Text="BANされにくい理由:" FontWeight="Bold" Margin="0,12,0,0" />
+                    <TextBlock TextWrapping="Wrap" Margin="0,4,0,0" Text="・表示しているのはDiscord公式Web版そのもので、改造・チート機能はありません。&#x0a;・トークンの抜き出しや非公開APIの直接利用はしていません。通常のブラウザとほぼ同じ見え方です。&#x0a;・自動送信や大量操作などの自動化機能は搭載していません。&#x0a;&#x0a;ただし100%の保証はできません。規約上は公式クライアントの利用が前提のため、理論上のリスクはゼロではありません。自動化・マクロ・スパム行為の併用は避けてください。" />
+                    <TextBlock Text="変更履歴:" FontWeight="Bold" Margin="0,12,0,0" />
+                    <TextBlock TextWrapping="Wrap" Margin="0,4,0,0" FontSize="11" Text="1.5.0 アカ別ミュート・通知履歴・起動改善ほか&#x0a;1.4.7 通知をバルーン方式に戻す(安定性優先)&#x0a;1.4.6 トースト不可時のバルーン代替&#x0a;1.4.5 テスト通知ボタン追加&#x0a;1.4.4 トースト用設定の書込権限修正&#x0a;1.4.3 トースト用ショートカット修正&#x0a;1.4.2 トースト前提の記録・再試行&#x0a;1.4.1 単一exe配布の修正(WebView2Loader内包)&#x0a;1.4.0 通話中保護・メモリ表示・トースト通知・設定移行&#x0a;1.3.0 レールにDiscordアバター表示&#x0a;1.2.0 単一起動・通知の横取り方式化&#x0a;1.1.0 自己診断・劣化通知、設定画面改善&#x0a;1.0.0 初回リリース(2アカ常駐・省メモリ・トレイ・バッジ等)" />
+                    <TextBlock Text="自己診断:" FontWeight="Bold" Margin="0,12,0,0" />
+                    <Button x:Name="DiagButton" Content="今すぐ診断する" HorizontalAlignment="Left"
+                            Width="140" Margin="0,4,0,0" Click="DiagButton_Click" />
+                    <TextBlock x:Name="DiagResult" TextWrapping="Wrap" Margin="0,4,0,0"
+                               FontFamily="Consolas,MeiryoKeGothic" FontSize="11" />
+                </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="OK" Width="80" IsDefault="True" Margin="0,0,8,0" Click="Ok_Click" />
+            <Button Content="キャンセル" Width="80" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>
