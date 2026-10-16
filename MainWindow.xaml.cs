@@ -70,6 +70,7 @@ public partial class MainWindow : Window
     private bool _inVoice2;
 
     private WinForms.NotifyIcon? _tray;
+    private System.Drawing.Icon? _trayIcon;
     private bool _exiting;
     private int _balloonAccount = 1;
     private readonly List<HistoryWindow.Item> _history = new();
@@ -125,9 +126,12 @@ public partial class MainWindow : Window
             _hotkeySource = HwndSource.FromHwnd(hwnd);
             _hotkeySource?.AddHook(WndProcHook);
             const uint mod = 0x0001 | 0x0002; // Alt | Ctrl
-            RegisterHotKey(hwnd, 1, mod, 0x31);
-            RegisterHotKey(hwnd, 2, mod, 0x32);
-            RegisterHotKey(hwnd, 3, mod, 0x4D);
+            if (!RegisterHotKey(hwnd, 1, mod, 0x31))
+                Diagnostics.Log("グローバルホットキー登録失敗: Ctrl+Alt+1");
+            if (!RegisterHotKey(hwnd, 2, mod, 0x32))
+                Diagnostics.Log("グローバルホットキー登録失敗: Ctrl+Alt+2");
+            if (!RegisterHotKey(hwnd, 3, mod, 0x4D))
+                Diagnostics.Log("グローバルホットキー登録失敗: Ctrl+Alt+M");
         }
         catch { }
     }
@@ -615,6 +619,8 @@ public partial class MainWindow : Window
                 var ns = JsonSerializer.Deserialize<AppSettings>(s.GetRawText());
                 if (ns is not null)
                 {
+                    ns.Zoom1 = AppSettings.ClampZoom(ns.Zoom1);
+                    ns.Zoom2 = AppSettings.ClampZoom(ns.Zoom2);
                     _settings = ns;
                     _settings.Save();
                 }
@@ -673,9 +679,10 @@ public partial class MainWindow : Window
             _tray.Visible = true;
             return;
         }
+        _trayIcon ??= GetAppIcon();
         _tray = new WinForms.NotifyIcon
         {
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = _trayIcon ?? System.Drawing.SystemIcons.Application,
             Text = "TwinCord",
             Visible = true,
         };
@@ -692,6 +699,20 @@ public partial class MainWindow : Window
             BringToFront();
             if (n is 1 or 2) SwitchTo(n);
         };
+    }
+
+    private static System.Drawing.Icon? GetAppIcon()
+    {
+        try
+        {
+            var path = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(path)) return null;
+            return System.Drawing.Icon.ExtractAssociatedIcon(path);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     internal void BringToFront() => ShowMain();
@@ -791,6 +812,7 @@ public partial class MainWindow : Window
         }
         catch { }
         _tray?.Dispose();
+        _trayIcon?.Dispose();
         base.OnClosed(e);
     }
 
@@ -842,19 +864,22 @@ public partial class MainWindow : Window
     private async void BadgeTimer_Tick(object? sender, EventArgs e)
     {
         if (_badgeBusy) return;
-        if (!_settings.UnreadBadge)
-        {
-            Badge1.Visibility = Visibility.Collapsed;
-            Badge2.Visibility = Visibility.Collapsed;
-            return;
-        }
         _badgeBusy = true;
         try
         {
-            if (_current != 2 && _view2Ready)
-                await UpdateBadgeAsync(View2, Badge2, Badge2Text);
-            if (_current != 1 && _view1Ready)
-                await UpdateBadgeAsync(View1, Badge1, Badge1Text);
+            if (_settings.UnreadBadge)
+            {
+                if (_current != 2 && _view2Ready)
+                    await UpdateBadgeAsync(View2, Badge2, Badge2Text);
+                if (_current != 1 && _view1Ready)
+                    await UpdateBadgeAsync(View1, Badge1, Badge1Text);
+            }
+            else
+            {
+                Badge1.Visibility = Visibility.Collapsed;
+                Badge2.Visibility = Visibility.Collapsed;
+            }
+            // バッジOFFでも通話検出とズーム同期は継続する
             if (_view1Ready) await UpdateVoiceAsync(1);
             if (_view2Ready) await UpdateVoiceAsync(2);
             SyncZoom(1);
