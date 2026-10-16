@@ -14,6 +14,7 @@ public partial class HistoryWindow : Window
     public HistoryWindow(List<Item> items, Action<int> jump)
     {
         InitializeComponent();
+        WindowIcon.Set(this);
         _items = items;
         _jump = jump;
         Loaded += HistoryWindow_Loaded;

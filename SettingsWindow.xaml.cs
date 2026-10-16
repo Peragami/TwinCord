@@ -16,6 +16,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow(AppSettings settings)
     {
         InitializeComponent();
+        WindowIcon.Set(this);
         _settings = settings;
         Loaded += SettingsWindow_Loaded;
     }
