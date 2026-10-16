@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace TwinCord;
 
-public record UpdateInfo(string Tag, string Version, string Notes, string AssetUrl);
+public record UpdateInfo(string Tag, string Version, string Notes, string AssetUrl, string Sha256);
 
 /// <summary>
 /// GitHub Releases経由の更新確認・適用。適用は別batに委譲する。
@@ -35,6 +35,7 @@ public static class Updater
         if (string.IsNullOrEmpty(latest)) return null;
         var notes = r.TryGetProperty("body", out var b) ? (b.GetString() ?? "") : "";
         string assetUrl = "";
+        string sha256 = "";
         if (r.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
         {
             foreach (var a in assets.EnumerateArray())
@@ -42,10 +43,13 @@ public static class Updater
                 var name = a.TryGetProperty("name", out var an) ? (an.GetString() ?? "") : "";
                 if (!string.Equals(name, AssetName, StringComparison.OrdinalIgnoreCase)) continue;
                 assetUrl = a.TryGetProperty("browser_download_url", out var au) ? (au.GetString() ?? "") : "";
+                var digest = a.TryGetProperty("digest", out var dg) ? (dg.GetString() ?? "") : "";
+                if (digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
+                    sha256 = digest.Substring(7);
                 break;
             }
         }
-        return new UpdateInfo(tag, latest, notes, assetUrl);
+        return new UpdateInfo(tag, latest, notes, assetUrl, sha256);
     }
 
     public static bool IsNewer(string current, string latest)
@@ -80,6 +84,25 @@ public static class Updater
         }
     }
 
+    /// <summary>
+    /// ダウンロード済みファイルのSHA256を照合する。期待値が空なら検証なしでtrue。
+    /// </summary>
+    public static bool VerifySha256(string path, string expectedHex)
+    {
+        if (string.IsNullOrEmpty(expectedHex)) return true;
+        try
+        {
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            using var fs = File.OpenRead(path);
+            var actual = Convert.ToHexString(sha.ComputeHash(fs));
+            return string.Equals(actual, expectedHex, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public static string StageDir() => Path.Combine(Path.GetTempPath(), "TwinCordUpdate");
 
     public static string StagePath() => Path.Combine(StageDir(), "TwinCord.new.exe");
@@ -103,6 +126,7 @@ public static class Updater
             "copy /Y %SRC% %DST% >nul",
             "start \"\" %DST%",
             "del %SRC% >nul 2>&1",
+            "del \"%~f0\" >nul 2>&1",
         }, new UTF8Encoding(false));
         Process.Start(new ProcessStartInfo
         {

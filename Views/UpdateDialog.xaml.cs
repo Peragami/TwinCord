@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net.Http;
 using System.Windows;
 
@@ -54,6 +55,16 @@ public partial class UpdateDialog : Window
             var dest = Updater.StagePath();
             var progress = new Progress<double>(v => Progress.Value = v);
             await Updater.DownloadAsync(http, _info.AssetUrl, dest, progress, _cts.Token);
+            StatusText.Text = "検証中…";
+            if (!Updater.VerifySha256(dest, _info.Sha256))
+            {
+                StatusText.Text = "配布ファイルの検証に失敗しました。手動で更新してください。";
+                try { File.Delete(dest); } catch { }
+                UpdateButton.IsEnabled = true;
+                LaterButton.IsEnabled = true;
+                Progress.Visibility = Visibility.Collapsed;
+                return;
+            }
             StatusText.Text = "入れ替え準備中…";
             Updater.ApplyAndRestart(Environment.ProcessId, dest, exe);
             DialogResult = true;
