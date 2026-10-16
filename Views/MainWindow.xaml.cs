@@ -195,6 +195,8 @@ public partial class MainWindow : Window
             SwitchTo(_current);
             _ = TryUpdateAvatarAsync(1);
             _ = TryUpdateAvatarAsync(2);
+            if (_settings.AutoUpdateCheck && !Updater.IsSelfContainedBuild)
+                _ = CheckUpdateOnStartupAsync();
         }
         catch (Exception ex)
         {
@@ -353,6 +355,7 @@ public partial class MainWindow : Window
     private void ShowBalloon(int n, string acc, string text)
     {
         SetupTray();
+        _pendingUpdate = null; // チャット通知が来たら更新案内はそちらに譲る
         _balloonAccount = n;
         if (_tray is not null)
         {
@@ -580,20 +583,11 @@ public partial class MainWindow : Window
     {
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get,
-                "https://api.github.com/repos/Peragami/TwinCord/releases/latest");
-            req.Headers.UserAgent.ParseAdd("TwinCord");
-            using var res = await _http.SendAsync(req);
-            if (!res.IsSuccessStatusCode)
-                return "確認できませんでした(HTTP " + (int)res.StatusCode + ")。";
-            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
-            var r = doc.RootElement;
-            var tag = r.TryGetProperty("tag_name", out var t) ? (t.GetString() ?? "") : "";
-            var url = r.TryGetProperty("html_url", out var u) ? (u.GetString() ?? "") : "";
-            var latest = tag.TrimStart('v', 'V');
-            if (string.IsNullOrEmpty(latest)) return "確認できませんでした。";
-            if (CompareVersions(Diagnostics.AppVersion(), latest) < 0)
-                return $"新しいバージョンがあります: {tag}\n{url}";
+            var info = await Updater.FetchLatestAsync(_http);
+            if (info is null)
+                return "確認できませんでした。";
+            if (Updater.IsNewer(Diagnostics.AppVersion(), info.Version))
+                return $"新しいバージョンがあります: {info.Tag}\nトレイメニューの更新確認か、起動時の通知から更新できます。";
             return $"最新です(v{Diagnostics.AppVersion()})。";
         }
         catch (Exception ex)
@@ -611,6 +605,70 @@ public partial class MainWindow : Window
         catch
         {
             return 0;
+        }
+    }
+
+    // ---- 起動時更新確認・ワンクリック更新 ----
+
+    private UpdateInfo? _pendingUpdate;
+
+    private async Task CheckUpdateOnStartupAsync()
+    {
+        try
+        {
+            // 起動直後の混雑(Discord読み込み)を避けてから確認
+            await Task.Delay(TimeSpan.FromSeconds(15));
+            if (_exiting) return;
+            var info = await Updater.FetchLatestAsync(_http);
+            if (info is null || string.IsNullOrEmpty(info.AssetUrl)) return;
+            if (!Updater.IsNewer(Diagnostics.AppVersion(), info.Version)) return;
+            _pendingUpdate = info;
+            _ = Dispatcher.BeginInvoke(() =>
+            {
+                SetupTray();
+                _balloonAccount = -1;
+                if (_tray is not null)
+                    _tray.ShowBalloonTip(15000, "TwinCord",
+                        $"新しいバージョン {info.Tag} があります。クリックで更新", WinForms.ToolTipIcon.Info);
+            });
+        }
+        catch { }
+    }
+
+    private async Task CheckUpdateFromTrayAsync()
+    {
+        try
+        {
+            var info = await Updater.FetchLatestAsync(_http);
+            if (info is null)
+            {
+                SetupTray();
+                _balloonAccount = -1;
+                _tray?.ShowBalloonTip(5000, "TwinCord", "確認できませんでした。",
+                    WinForms.ToolTipIcon.Warning);
+                return;
+            }
+            if (!Updater.IsNewer(Diagnostics.AppVersion(), info.Version) || string.IsNullOrEmpty(info.AssetUrl))
+            {
+                SetupTray();
+                _balloonAccount = -1;
+                _tray?.ShowBalloonTip(5000, "TwinCord", $"最新です(v{Diagnostics.AppVersion()})。",
+                    WinForms.ToolTipIcon.Info);
+                return;
+            }
+            OpenUpdateDialog(info);
+        }
+        catch { }
+    }
+
+    private void OpenUpdateDialog(UpdateInfo info)
+    {
+        _pendingUpdate = null;
+        var w = new UpdateDialog(info) { Owner = IsVisible ? this : null };
+        if (w.ShowDialog() == true)
+        {
+            _exiting = true;
+            Close();
         }
     }
 
@@ -738,11 +796,19 @@ public partial class MainWindow : Window
         menu.Items.Add("表示", null, (_, _) => ShowMain());
         menu.Items.Add("通知履歴", null, (_, _) => OpenHistory());
         menu.Items.Add("設定", null, (_, _) => OpenSettings());
+        menu.Items.Add("更新を確認", null, (_, _) => _ = CheckUpdateFromTrayAsync());
         menu.Items.Add("終了", null, (_, _) => { _exiting = true; Close(); });
         _tray.ContextMenuStrip = menu;
         _tray.DoubleClick += (_, _) => ShowMain();
         _tray.BalloonTipClicked += (_, _) =>
         {
+            if (_pendingUpdate is not null)
+            {
+                var u = _pendingUpdate;
+                BringToFront();
+                OpenUpdateDialog(u);
+                return;
+            }
             var n = _balloonAccount;
             BringToFront();
             if (n is 1 or 2) SwitchTo(n);

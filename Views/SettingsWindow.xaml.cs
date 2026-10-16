@@ -29,6 +29,7 @@ public partial class SettingsWindow : Window
         BadgeBox.IsChecked = _settings.UnreadBadge;
         UnreadBox.IsChecked = _settings.CountUnreadChannels;
         ReloadBox.IsChecked = _settings.AutoReload;
+        UpdateCheckBox.IsChecked = _settings.AutoUpdateCheck;
         Zoom1Slider.Value = _settings.Zoom1;
         Zoom2Slider.Value = _settings.Zoom2;
         UpdateZoomLabels();
@@ -65,6 +66,7 @@ public partial class SettingsWindow : Window
         _settings.UnreadBadge = BadgeBox.IsChecked == true;
         _settings.CountUnreadChannels = UnreadBox.IsChecked == true;
         _settings.AutoReload = ReloadBox.IsChecked == true;
+        _settings.AutoUpdateCheck = UpdateCheckBox.IsChecked == true;
         _settings.Zoom1 = AppSettings.ClampZoom(Zoom1Slider.Value);
         _settings.Zoom2 = AppSettings.ClampZoom(Zoom2Slider.Value);
         DialogResult = true;
