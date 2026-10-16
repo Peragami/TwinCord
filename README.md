@@ -57,6 +57,7 @@ publish-selfcontained.bat   :: ランタイム同梱の単一exe (publish-selfco
 
 ## バージョン履歴
 
+- 1.8.0 設定・履歴画面のDiscord風UI刷新ほか
 - 1.7.0 起動時最小化・更新確認ほか
 - 1.6.2 バッジOFF時の監視継続・トレイアイコン等
 - 1.6.1 アプリアイコン追加
