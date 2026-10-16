@@ -287,6 +287,8 @@ public partial class MainWindow : Window
         var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
         if (n == 1) _env1 = env; else _env2 = env;
         await view.EnsureCoreWebView2Async(env);
+        // 読み込み中から非表示側は絞っておく(起動ピークの抑制。表示切替時にRefreshされる)
+        SetMemoryLevel(view, n != _current);
         SetZoom(view, zoom);
         try
         {
@@ -820,6 +822,7 @@ public partial class MainWindow : Window
         if (_settings.MinimizeToTray && !_exiting)
         {
             e.Cancel = true;
+            TrimHostMemory();
             Hide();
             if (_tray is not null)
             {
@@ -885,6 +888,17 @@ public partial class MainWindow : Window
     private void MainWindow_StateChanged(object? sender, EventArgs e)
     {
         if (WindowState != WindowState.Minimized) return;
+        TrimHostMemory();
+        if (_settings.MinimizeToTray)
+        {
+            Hide();
+            if (_tray is not null) _tray.Visible = true;
+        }
+    }
+
+    // ホスト側のヒープ返却。Chromium側には触らない(常駐・通話に影響させないため)
+    private static void TrimHostMemory()
+    {
         try
         {
             GC.Collect();
@@ -892,11 +906,6 @@ public partial class MainWindow : Window
             EmptyWorkingSet(Process.GetCurrentProcess().Handle);
         }
         catch { }
-        if (_settings.MinimizeToTray)
-        {
-            Hide();
-            if (_tray is not null) _tray.Visible = true;
-        }
     }
 
     // ---- 未読バッジ・死活監視 ----
