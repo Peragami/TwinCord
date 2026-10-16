@@ -11,6 +11,7 @@ public class AppSettings
     public bool AutoReload { get; set; } = true;
     public bool CountUnreadChannels { get; set; }
     public bool StartMinimized { get; set; }
+    public bool AutoUpdateCheck { get; set; } = true;
     public double Zoom1 { get; set; } = 1.0;
     public double Zoom2 { get; set; } = 1.0;
     public double WinLeft { get; set; } = double.NaN;
@@ -64,6 +65,7 @@ public class AppSettings
         AutoReload = AutoReload,
         CountUnreadChannels = CountUnreadChannels,
         StartMinimized = StartMinimized,
+        AutoUpdateCheck = AutoUpdateCheck,
         Zoom1 = Zoom1,
         Zoom2 = Zoom2,
         WinLeft = WinLeft,
