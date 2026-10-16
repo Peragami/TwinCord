@@ -35,6 +35,12 @@ public partial class UpdateDialog : Window
         DialogResult = false;
     }
 
+    protected override void OnClosed(EventArgs e)
+    {
+        try { _cts?.Cancel(); } catch { }
+        base.OnClosed(e);
+    }
+
     private async void UpdateButton_Click(object sender, RoutedEventArgs e)
     {
         var exe = Environment.ProcessPath;
@@ -66,6 +72,7 @@ public partial class UpdateDialog : Window
                 return;
             }
             StatusText.Text = "入れ替え準備中…";
+            if (!IsLoaded) return; // 閉じ→完了のレース時は適用しない
             Updater.ApplyAndRestart(Environment.ProcessId, dest, exe);
             DialogResult = true;
         }
