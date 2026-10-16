@@ -37,8 +37,9 @@ public partial class MainWindow : Window
         "window.addEventListener('keydown',function(e){if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='1'||e.key==='2')){var t=e.target;if(t){var tn=(t.tagName||'').toUpperCase();if(tn==='INPUT'||tn==='TEXTAREA')return;if(t.closest&&t.closest('[contenteditable=\"true\"]'))return;}chrome.webview.postMessage('switch:'+e.key);}});";
 
     // Discordのデスクトップ通知を横取りしてホストに転送するJS(DM・メンション等すべて)
+    // 本物のNotificationは作らない(二重通知防止のためダミーを返す)
     private const string NotifyScript =
-        "(function(){try{var Orig=window.Notification;function Hooked(t,o){try{chrome.webview.postMessage('notify:'+JSON.stringify({title:t||'',body:(o&&o.body)||''}));}catch(e){}try{return new Orig(t,o);}catch(e2){return null;}}Hooked.permission='granted';Hooked.requestPermission=function(){return Promise.resolve('granted');};window.Notification=Hooked;}catch(e){}})();";
+        "(function(){try{var stub={close:function(){},addEventListener:function(){},removeEventListener:function(){}};function Hooked(t,o){try{chrome.webview.postMessage('notify:'+JSON.stringify({title:t||'',body:(o&&o.body)||''}));}catch(e){}return stub;}Hooked.permission='granted';Hooked.requestPermission=function(){return Promise.resolve('granted');};window.Notification=Hooked;}catch(e){}})();";
 
     // 通話中検出用JS(切断ボタンが出ていれば通話中とみなす)
     private const string VoiceScript =
@@ -78,6 +79,7 @@ public partial class MainWindow : Window
     private string _avatarUrl2 = "";
     private DispatcherTimer? _avatarTimer;
     private bool _avatarBusy;
+    private DispatcherTimer? _placeTimer;
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private DispatcherTimer? _badgeTimer;
     private DispatcherTimer? _healthTimer;
@@ -101,9 +103,12 @@ public partial class MainWindow : Window
         InitializeComponent();
         WindowIcon.Set(this);
         RestorePlacement();
+        if (_settings.StartMinimized) WindowState = WindowState.Minimized;
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
         StateChanged += MainWindow_StateChanged;
+        LocationChanged += PlaceChanged;
+        SizeChanged += PlaceChanged;
         SourceInitialized += MainWindow_SourceInitialized;
         _diag.Degraded += OnFeatureDegraded;
         View1.WebMessageReceived += View_WebMessageReceived;
@@ -554,6 +559,7 @@ public partial class MainWindow : Window
         var draft = _settings.Clone();
         var w = new SettingsWindow(draft) { Owner = IsVisible ? this : null };
         w.Diagnose = RunDiagnosticsAsync;
+        w.CheckUpdate = CheckForUpdateAsync;
         w.ExportRequested = ExportBundle;
         w.ImportRequested = ImportBundle;
         w.TestNotifyRequested = SendTestNotification;
@@ -564,6 +570,44 @@ public partial class MainWindow : Window
             ApplySettings();
         }
         UpdateGearAlert();
+    }
+
+    private async Task<string> CheckForUpdateAsync()
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get,
+                "https://api.github.com/repos/Peragami/TwinCord/releases/latest");
+            req.Headers.UserAgent.ParseAdd("TwinCord");
+            using var res = await _http.SendAsync(req);
+            if (!res.IsSuccessStatusCode)
+                return "確認できませんでした(HTTP " + (int)res.StatusCode + ")。";
+            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+            var r = doc.RootElement;
+            var tag = r.TryGetProperty("tag_name", out var t) ? (t.GetString() ?? "") : "";
+            var url = r.TryGetProperty("html_url", out var u) ? (u.GetString() ?? "") : "";
+            var latest = tag.TrimStart('v', 'V');
+            if (string.IsNullOrEmpty(latest)) return "確認できませんでした。";
+            if (CompareVersions(Diagnostics.AppVersion(), latest) < 0)
+                return $"新しいバージョンがあります: {tag}\n{url}";
+            return $"最新です(v{Diagnostics.AppVersion()})。";
+        }
+        catch (Exception ex)
+        {
+            return "確認できませんでした: " + ex.GetType().Name;
+        }
+    }
+
+    private static int CompareVersions(string a, string b)
+    {
+        try
+        {
+            return new Version(a.Split('-')[0]).CompareTo(new Version(b.Split('-')[0]));
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     private string ExportBundle()
@@ -763,19 +807,7 @@ public partial class MainWindow : Window
 
     private void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
-        try
-        {
-            _settings.WinMaximized = WindowState == WindowState.Maximized;
-            if (WindowState == WindowState.Normal)
-            {
-                _settings.WinLeft = Left;
-                _settings.WinTop = Top;
-                _settings.WinWidth = Width;
-                _settings.WinHeight = Height;
-            }
-            _settings.Save();
-        }
-        catch { }
+        SavePlacement();
         try
         {
             // トースト実験時代の残骸ショートカットを掃除
@@ -814,6 +846,40 @@ public partial class MainWindow : Window
         _tray?.Dispose();
         _trayIcon?.Dispose();
         base.OnClosed(e);
+    }
+
+    // 移動・リサイズの確定2秒後に保存(ドラッグ中の大量書込を回避)
+    private void PlaceChanged(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (WindowState != WindowState.Normal) return;
+            if (_placeTimer is null)
+            {
+                _placeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+                _placeTimer.Tick += (_, _) => { _placeTimer?.Stop(); SavePlacement(); };
+            }
+            _placeTimer.Stop();
+            _placeTimer.Start();
+        }
+        catch { }
+    }
+
+    private void SavePlacement()
+    {
+        try
+        {
+            _settings.WinMaximized = WindowState == WindowState.Maximized;
+            if (WindowState == WindowState.Normal)
+            {
+                _settings.WinLeft = Left;
+                _settings.WinTop = Top;
+                _settings.WinWidth = Width;
+                _settings.WinHeight = Height;
+            }
+            _settings.Save();
+        }
+        catch { }
     }
 
     private void MainWindow_StateChanged(object? sender, EventArgs e)
