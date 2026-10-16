@@ -32,17 +32,47 @@
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="Background" Value="#5865F2" />
                 </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#4752C4" />
+                </Trigger>
             </Style.Triggers>
         </Style>
         <Style x:Key="RailToolButton" TargetType="Button">
             <Setter Property="Width" Value="48" />
-            <Setter Property="Height" Value="32" />
-            <Setter Property="FontSize" Value="15" />
+            <Setter Property="Height" Value="48" />
+            <Setter Property="FontSize" Value="18" />
             <Setter Property="Foreground" Value="#B5BAC1" />
             <Setter Property="Background" Value="#2B2D31" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="24">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#5865F2" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#4752C4" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="#111214" />
+            <Setter Property="Foreground" Value="#DBDEE1" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="FontSize" Value="13" />
         </Style>
     </Window.Resources>
     <Grid>
@@ -127,12 +157,14 @@
                 </TextBlock.ContextMenu>
             </TextBlock>
 
+            <Border Height="2" Width="32" Background="#35363C" CornerRadius="1"
+                    HorizontalAlignment="Center" Margin="0,24,0,0" />
             <Button x:Name="ReloadButton" Style="{StaticResource RailToolButton}"
                     Content="&#x21BB;" ToolTip="表示中を再読み込み(メモリ解放)"
-                    Margin="0,24,0,0" Click="ReloadButton_Click" />
+                    Margin="0,16,0,0" Click="ReloadButton_Click" />
             <Button x:Name="SettingsButton" Style="{StaticResource RailToolButton}"
                     Content="&#x2699;" ToolTip="設定"
-                    Margin="0,8,0,0" Click="SettingsButton_Click" />
+                    Margin="0,12,0,0" Click="SettingsButton_Click" />
         </StackPanel>
 
         <!-- Discord本体 -->
