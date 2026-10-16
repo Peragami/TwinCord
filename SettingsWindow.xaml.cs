@@ -9,6 +9,7 @@ public partial class SettingsWindow : Window
     private readonly AppSettings _settings;
 
     public Func<Task<string>>? Diagnose { get; set; }
+    public Func<Task<string>>? CheckUpdate { get; set; }
     public Func<string?>? ExportRequested { get; set; }
     public Func<string?>? ImportRequested { get; set; }
     public Action? TestNotifyRequested { get; set; }
@@ -25,6 +26,7 @@ public partial class SettingsWindow : Window
     {
         StartBox.IsChecked = _settings.StartWithWindows;
         TrayBox.IsChecked = _settings.MinimizeToTray;
+        StartMinBox.IsChecked = _settings.StartMinimized;
         BadgeBox.IsChecked = _settings.UnreadBadge;
         UnreadBox.IsChecked = _settings.CountUnreadChannels;
         ReloadBox.IsChecked = _settings.AutoReload;
@@ -60,6 +62,7 @@ public partial class SettingsWindow : Window
     {
         _settings.StartWithWindows = StartBox.IsChecked == true;
         _settings.MinimizeToTray = TrayBox.IsChecked == true;
+        _settings.StartMinimized = StartMinBox.IsChecked == true;
         _settings.UnreadBadge = BadgeBox.IsChecked == true;
         _settings.CountUnreadChannels = UnreadBox.IsChecked == true;
         _settings.AutoReload = ReloadBox.IsChecked == true;
@@ -105,5 +108,28 @@ public partial class SettingsWindow : Window
     {
         TestNotifyRequested?.Invoke();
         TransferResult.Text = "テスト通知を送信しました。表示されなければログを確認してください。";
+    }
+
+    private async void UpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (CheckUpdate is null)
+        {
+            UpdateResult.Text = "確認機能が利用できません。";
+            return;
+        }
+        UpdateButton.IsEnabled = false;
+        UpdateResult.Text = "確認中…";
+        try
+        {
+            UpdateResult.Text = await CheckUpdate();
+        }
+        catch (Exception ex)
+        {
+            UpdateResult.Text = "確認エラー: " + ex.Message;
+        }
+        finally
+        {
+            UpdateButton.IsEnabled = true;
+        }
     }
 }

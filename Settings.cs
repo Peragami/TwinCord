@@ -10,6 +10,7 @@ public class AppSettings
     public bool UnreadBadge { get; set; } = true;
     public bool AutoReload { get; set; } = true;
     public bool CountUnreadChannels { get; set; }
+    public bool StartMinimized { get; set; }
     public double Zoom1 { get; set; } = 1.0;
     public double Zoom2 { get; set; } = 1.0;
     public double WinLeft { get; set; } = double.NaN;
@@ -61,8 +62,15 @@ public class AppSettings
         MinimizeToTray = MinimizeToTray,
         UnreadBadge = UnreadBadge,
         AutoReload = AutoReload,
+        CountUnreadChannels = CountUnreadChannels,
+        StartMinimized = StartMinimized,
         Zoom1 = Zoom1,
         Zoom2 = Zoom2,
+        WinLeft = WinLeft,
+        WinTop = WinTop,
+        WinWidth = WinWidth,
+        WinHeight = WinHeight,
+        WinMaximized = WinMaximized,
     };
 
     public static double ClampZoom(double v) => v < 0.5 ? 0.5 : v > 2.0 ? 2.0 : v;
