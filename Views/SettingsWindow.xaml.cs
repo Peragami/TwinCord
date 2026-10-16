@@ -30,6 +30,10 @@ public partial class SettingsWindow : Window
         UnreadBox.IsChecked = _settings.CountUnreadChannels;
         ReloadBox.IsChecked = _settings.AutoReload;
         UpdateCheckBox.IsChecked = _settings.AutoUpdateCheck;
+        NotifyBox.IsChecked = _settings.NotifyEnabled;
+        SkipViewedBox.IsChecked = _settings.SkipViewedAccount;
+        HiddenOnlyBox.IsChecked = _settings.NotifyHiddenOnly;
+        HideDlBox.IsChecked = _settings.HideDownloadButton;
         Zoom1Slider.Value = _settings.Zoom1;
         Zoom2Slider.Value = _settings.Zoom2;
         UpdateZoomLabels();
@@ -67,6 +71,10 @@ public partial class SettingsWindow : Window
         _settings.CountUnreadChannels = UnreadBox.IsChecked == true;
         _settings.AutoReload = ReloadBox.IsChecked == true;
         _settings.AutoUpdateCheck = UpdateCheckBox.IsChecked == true;
+        _settings.NotifyEnabled = NotifyBox.IsChecked == true;
+        _settings.SkipViewedAccount = SkipViewedBox.IsChecked == true;
+        _settings.NotifyHiddenOnly = HiddenOnlyBox.IsChecked == true;
+        _settings.HideDownloadButton = HideDlBox.IsChecked == true;
         _settings.Zoom1 = AppSettings.ClampZoom(Zoom1Slider.Value);
         _settings.Zoom2 = AppSettings.ClampZoom(Zoom2Slider.Value);
         DialogResult = true;

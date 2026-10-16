@@ -47,6 +47,10 @@ public partial class MainWindow : Window
     private const string AvatarScript =
         "(()=>{try{var btn=document.querySelector('[aria-label=\"ユーザー設定\"],[aria-label=\"User Settings\"]');var scope=btn?btn.parentElement:null;var img=null;for(var i=0;i<4&&scope;i++){img=scope.querySelector('img[src*=\"avatars/\"]');if(img)break;scope=scope.parentElement;}if(!img){var all=document.querySelectorAll('[class*=\"panels\"] img[src*=\"avatars/\"]');if(all.length)img=all[0];}if(!img)return '';var src=img.src||'';if(!src)return '';return src.split('?')[0]+'?size=64';}catch(e){return '';}})()";
 
+    // サーバーリストの「アプリをダウンロード」ボタンを隠すCSS(ベストエフォート)
+    private const string HideDownloadScript =
+        "(function(){try{var css='a[href=\"/download\"],a[href^=\"/download?\"],[aria-label=\"Download Apps\"],[aria-label=\"Download apps\"],[aria-label=\"アプリをダウンロード\"],[title=\"Download Apps\"]{display:none!important}';var s=document.createElement('style');s.textContent=css;(document.head||document.documentElement).appendChild(s);}catch(e){}})();";
+
     // 未読チャンネル数を数えるJS(ベストエフォート)
     private const string UnreadScript =
         "(()=>{try{const sels=['[class*=unreadBar]','[class*=unreadPill]','[aria-label*=未読]','[aria-label*=unread]','[aria-label*=Unread]'];const seen=new Set();let n=0;for(const s of sels){try{document.querySelectorAll(s).forEach(function(el){if(seen.has(el))return;seen.add(el);n++;});}catch(_){}}return n;}catch(_){return -1;}})()";
@@ -308,6 +312,14 @@ public partial class MainWindow : Window
             await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(NotifyScript);
         }
         catch { }
+        if (_settings.HideDownloadButton)
+        {
+            try
+            {
+                await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(HideDownloadScript);
+            }
+            catch { }
+        }
         view.CoreWebView2.ProcessFailed += (_, _) => view.Dispatcher.BeginInvoke(() =>
         {
             // 通話中は再読み込みしない(切断防止)
@@ -331,8 +343,13 @@ public partial class MainWindow : Window
     private void HandlePageNotify(object? sender, string json)
     {
         int n = ReferenceEquals(sender, View2) ? 2 : 1;
-        // 見ている最中のアカウントは通知不要
-        if (IsVisible && WindowState != WindowState.Minimized && _current == n) return;
+        // マスターOFFでは記録も通知もしない
+        if (!_settings.NotifyEnabled) return;
+        bool focused = IsVisible && WindowState != WindowState.Minimized;
+        // 格納中のみ通知する設定なら、表示中はすべて出さない
+        if (focused && _settings.NotifyHiddenOnly) return;
+        // 見ている最中のアカウントは通知不要(設定で変更可)
+        if (focused && _current == n && _settings.SkipViewedAccount) return;
         var acc = n == 1 ? _acc1Name : _acc2Name;
         string title = acc, body = "";
         try
