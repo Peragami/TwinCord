@@ -124,6 +124,7 @@ public static class Updater
             "tasklist /FI \"PID eq %PID%\" 2>nul | find \"%PID%\" >nul",
             "if %ERRORLEVEL%==0 (timeout /t 1 /nobreak >nul & goto wait)",
             "copy /Y %SRC% %DST% >nul",
+            "if %ERRORLEVEL% NEQ 0 (echo %DATE% %TIME% copy failed %SRC% to %DST%>> \"%~dp0update-error.log\" & start \"\" %DST% & del \"%~f0\" >nul 2>&1 & exit /b 1)",
             "start \"\" %DST%",
             "del %SRC% >nul 2>&1",
             "del \"%~f0\" >nul 2>&1",
