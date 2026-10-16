@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Web.WebView2.Core;
@@ -26,12 +25,12 @@ public partial class SettingsWindow : Window
         StartBox.IsChecked = _settings.StartWithWindows;
         TrayBox.IsChecked = _settings.MinimizeToTray;
         BadgeBox.IsChecked = _settings.UnreadBadge;
+        UnreadBox.IsChecked = _settings.CountUnreadChannels;
         ReloadBox.IsChecked = _settings.AutoReload;
         Zoom1Slider.Value = _settings.Zoom1;
         Zoom2Slider.Value = _settings.Zoom2;
         UpdateZoomLabels();
 
-        var v = Assembly.GetExecutingAssembly().GetName().Version;
         VersionText.Text = "バージョン: " + Diagnostics.AppVersion();
         DataText.Text = AppSettings.DataFolder();
         try
@@ -61,6 +60,7 @@ public partial class SettingsWindow : Window
         _settings.StartWithWindows = StartBox.IsChecked == true;
         _settings.MinimizeToTray = TrayBox.IsChecked == true;
         _settings.UnreadBadge = BadgeBox.IsChecked == true;
+        _settings.CountUnreadChannels = UnreadBox.IsChecked == true;
         _settings.AutoReload = ReloadBox.IsChecked == true;
         _settings.Zoom1 = AppSettings.ClampZoom(Zoom1Slider.Value);
         _settings.Zoom2 = AppSettings.ClampZoom(Zoom2Slider.Value);

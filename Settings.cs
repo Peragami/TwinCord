@@ -9,6 +9,7 @@ public class AppSettings
     public bool MinimizeToTray { get; set; } = true;
     public bool UnreadBadge { get; set; } = true;
     public bool AutoReload { get; set; } = true;
+    public bool CountUnreadChannels { get; set; }
     public double Zoom1 { get; set; } = 1.0;
     public double Zoom2 { get; set; } = 1.0;
     public double WinLeft { get; set; } = double.NaN;
