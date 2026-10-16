@@ -37,4 +37,6 @@ public partial class HistoryWindow : Window
         _jump(_items[i].Account);
         Close();
     }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 }
