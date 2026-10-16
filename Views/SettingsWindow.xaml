@@ -126,7 +126,8 @@
                                 </Border>
                                 <StackPanel>
                                     <TextBlock Text="Acc1 の拡大率" Style="{StaticResource RowLabel}" />
-                                    <Slider x:Name="Zoom1Slider" Minimum="0.5" Maximum="2.0" TickFrequency="0.05"
+                                    <Slider x:Name="Zoom1Slider" Style="{StaticResource DiscordSlider}"
+                                            Minimum="0.5" Maximum="2.0" TickFrequency="0.05"
                                             IsSnapToTickEnabled="True" Margin="0,10,0,2"
                                             ValueChanged="ZoomSlider_Changed" />
                                 </StackPanel>
@@ -143,7 +144,8 @@
                                 </Border>
                                 <StackPanel>
                                     <TextBlock Text="Acc2 の拡大率" Style="{StaticResource RowLabel}" />
-                                    <Slider x:Name="Zoom2Slider" Minimum="0.5" Maximum="2.0" TickFrequency="0.05"
+                                    <Slider x:Name="Zoom2Slider" Style="{StaticResource DiscordSlider}"
+                                            Minimum="0.5" Maximum="2.0" TickFrequency="0.05"
                                             IsSnapToTickEnabled="True" Margin="0,10,0,2"
                                             ValueChanged="ZoomSlider_Changed" />
                                 </StackPanel>
