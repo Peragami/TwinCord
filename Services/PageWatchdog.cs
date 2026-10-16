@@ -22,7 +22,6 @@ public sealed class PageWatchdog
         public required Func<string> AccountName { get; init; }
         public required System.Windows.Controls.Border Badge { get; init; }
         public required System.Windows.Controls.TextBlock BadgeText { get; init; }
-        public required Func<double> Zoom { get; init; }
     }
 
     // 通話中検出用JS(切断ボタンが出ていれば通話中とみなす)

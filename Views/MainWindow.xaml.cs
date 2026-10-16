@@ -96,7 +96,6 @@ public partial class MainWindow : Window
                 AccountName = () => _acc1Name,
                 Badge = Badge1,
                 BadgeText = Badge1Text,
-                Zoom = () => _settings.Zoom1,
             },
             new PageWatchdog.AccountSlot
             {
@@ -106,7 +105,6 @@ public partial class MainWindow : Window
                 AccountName = () => _acc2Name,
                 Badge = Badge2,
                 BadgeText = Badge2Text,
-                Zoom = () => _settings.Zoom2,
             },
             () => _settings, _diag, () => _current);
         _tray.ShowMainRequested += ShowMain;
@@ -336,7 +334,6 @@ public partial class MainWindow : Window
         _history.Add(new HistoryWindow.Item(DateTime.Now, n, acc, text));
         Dispatcher.BeginInvoke(() =>
         {
-            _pendingUpdate = null; // チャット通知が来たら更新案内はそちらに譲る
             _tray.ShowBalloon("TwinCord - " + acc, text, WinForms.ToolTipIcon.Info, 8000, () =>
             {
                 BringToFront();
@@ -525,12 +522,9 @@ public partial class MainWindow : Window
 
     // ---- 起動時更新確認・ワンクリック更新 ----
 
-    private UpdateInfo? _pendingUpdate;
-
     private Task CheckUpdateOnStartupAsync() =>
         _updates.StartupCheckAsync(info =>
         {
-            _pendingUpdate = info;
             return Dispatcher.InvokeAsync(() =>
             {
                 _tray.ShowBalloon("TwinCord",
@@ -565,7 +559,6 @@ public partial class MainWindow : Window
 
     private void OpenUpdateDialog(UpdateInfo info)
     {
-        _pendingUpdate = null;
         var w = new UpdateDialog(info) { Owner = IsVisible ? this : null };
         if (w.ShowDialog() == true)
         {
