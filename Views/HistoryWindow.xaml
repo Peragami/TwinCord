@@ -54,6 +54,6 @@
                  Background="Transparent" Foreground="#DBDEE1" BorderThickness="0"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
         <Button Grid.Row="2" Content="閉じる" MinWidth="96" HorizontalAlignment="Right"
-                Margin="0,12,0,0" Style="{StaticResource BtnPrimary}" IsCancel="True" />
+                Margin="0,12,0,0" Style="{StaticResource BtnPrimary}" IsCancel="True" Click="CloseButton_Click" />
     </Grid>
 </Window>
