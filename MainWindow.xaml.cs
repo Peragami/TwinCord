@@ -98,6 +98,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        WindowIcon.Set(this);
         RestorePlacement();
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
