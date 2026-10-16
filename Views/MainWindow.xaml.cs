@@ -47,9 +47,10 @@ public partial class MainWindow : Window
     private const string AvatarScript =
         "(()=>{try{var btn=document.querySelector('[aria-label=\"ユーザー設定\"],[aria-label=\"User Settings\"]');var scope=btn?btn.parentElement:null;var img=null;for(var i=0;i<4&&scope;i++){img=scope.querySelector('img[src*=\"avatars/\"]');if(img)break;scope=scope.parentElement;}if(!img){var all=document.querySelectorAll('[class*=\"panels\"] img[src*=\"avatars/\"]');if(all.length)img=all[0];}if(!img)return '';var src=img.src||'';if(!src)return '';return src.split('?')[0]+'?size=64';}catch(e){return '';}})()";
 
-    // サーバーリストの「アプリをダウンロード」ボタンを隠すCSS(ベストエフォート)
+    // サーバーリストの「アプリをダウンロード」ボタンを隠すJS(ベストエフォート)
+    // ボタン要素のためCSSだけでは届かず、テキスト一致で探して3秒毎に再適用する
     private const string HideDownloadScript =
-        "(function(){try{var css='a[href=\"/download\"],a[href^=\"/download?\"],[aria-label=\"Download Apps\"],[aria-label=\"Download apps\"],[aria-label=\"アプリをダウンロード\"],[title=\"Download Apps\"]{display:none!important}';var s=document.createElement('style');s.textContent=css;(document.head||document.documentElement).appendChild(s);}catch(e){}})();";
+        "(function(){try{if(window.top!==window)return;}catch(e){return;}try{var css='a[href=\"/download\"],a[href^=\"/download?\"]{display:none!important}';var s=document.createElement('style');s.textContent=css;(document.head||document.documentElement).appendChild(s);}catch(e){}function kill(){try{var els=document.querySelectorAll('button');for(var i=0;i<els.length;i++){var t=els[i].textContent||'';if(t.indexOf('アプリをダウンロード')>=0||t.indexOf('Download Apps')>=0||t.indexOf('Download apps')>=0){els[i].style.setProperty('display','none','important');}}}catch(e){}}try{kill();setInterval(kill,3000);}catch(e){}})();";
 
     // 未読チャンネル数を数えるJS(ベストエフォート)
     private const string UnreadScript =
