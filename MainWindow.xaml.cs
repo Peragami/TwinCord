@@ -26,6 +26,12 @@ public partial class MainWindow : Window
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
 
+    [DllImport("user32.dll")]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
     // Discordページ内でCtrl+1/2を拾ってホストに通知するJS
     private const string HotkeyScript =
         "window.addEventListener('keydown',function(e){if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='1'||e.key==='2')){var t=e.target;if(t){var tn=(t.tagName||'').toUpperCase();if(tn==='INPUT'||tn==='TEXTAREA')return;if(t.closest&&t.closest('[contenteditable=\"true\"]'))return;}chrome.webview.postMessage('switch:'+e.key);}});";
@@ -39,6 +45,10 @@ public partial class MainWindow : Window
         "(()=>{try{return document.querySelector('[aria-label=\"切断\"],[aria-label=\"Disconnect\"],[aria-label=\"Desconectar\"],[aria-label=\"Déconnecter\"],[aria-label=\"Trennen\"],[aria-label=\"Disconnetti\"],[aria-label=\"Desligar\"],[aria-label=\"Verbinding verbreken\"],[aria-label=\"Rozłącz\"],[aria-label=\"Отключиться\"],[aria-label=\"연결 해제\"],[aria-label=\"断开连接\"],[aria-label=\"斷開連接\"]')?'1':'0';}catch(e){return '0';}})()";
     private const string AvatarScript =
         "(()=>{try{var btn=document.querySelector('[aria-label=\"ユーザー設定\"],[aria-label=\"User Settings\"]');var scope=btn?btn.parentElement:null;var img=null;for(var i=0;i<4&&scope;i++){img=scope.querySelector('img[src*=\"avatars/\"]');if(img)break;scope=scope.parentElement;}if(!img){var all=document.querySelectorAll('[class*=\"panels\"] img[src*=\"avatars/\"]');if(all.length)img=all[0];}if(!img)return '';var src=img.src||'';if(!src)return '';return src.split('?')[0]+'?size=64';}catch(e){return '';}})()";
+
+    // 未読チャンネル数を数えるJS(ベストエフォート)
+    private const string UnreadScript =
+        "(()=>{try{const sels=['[class*=unreadBar]','[class*=unreadPill]','[aria-label*=未読]','[aria-label*=unread]','[aria-label*=Unread]'];const seen=new Set();let n=0;for(const s of sels){try{document.querySelectorAll(s).forEach(function(el){if(seen.has(el))return;seen.add(el);n++;});}catch(_){}}return n;}catch(_){return -1;}})()";
 
     // 未読・メンション数を数えるJS(ベストエフォート)
     private const string BadgeScript =
@@ -67,7 +77,7 @@ public partial class MainWindow : Window
     private string _avatarUrl2 = "";
     private DispatcherTimer? _avatarTimer;
     private bool _avatarBusy;
-    private static readonly HttpClient _http = new();
+    private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private DispatcherTimer? _badgeTimer;
     private DispatcherTimer? _healthTimer;
     private bool _badgeBusy;
@@ -83,6 +93,7 @@ public partial class MainWindow : Window
         new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#B5BAC1"));
 
     private readonly Diagnostics _diag = new();
+    private HwndSource? _hotkeySource;
 
     public MainWindow()
     {
@@ -106,6 +117,32 @@ public partial class MainWindow : Window
             DwmSetWindowAttribute(hwnd, 20, ref dark, sizeof(int)); // Win11ダークタイトルバー
         }
         catch { }
+        try
+        {
+            // グローバルホットキー: Ctrl+Alt+1/2=切替、Ctrl+Alt+M=表示中ミュート
+            var hwnd = new WindowInteropHelper(this).Handle;
+            _hotkeySource = HwndSource.FromHwnd(hwnd);
+            _hotkeySource?.AddHook(WndProcHook);
+            const uint mod = 0x0001 | 0x0002; // Alt | Ctrl
+            RegisterHotKey(hwnd, 1, mod, 0x31);
+            RegisterHotKey(hwnd, 2, mod, 0x32);
+            RegisterHotKey(hwnd, 3, mod, 0x4D);
+        }
+        catch { }
+    }
+
+    private IntPtr WndProcHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == 0x0312)
+        {
+            switch (wParam.ToInt32())
+            {
+                case 1: SwitchTo(1); handled = true; break;
+                case 2: SwitchTo(2); handled = true; break;
+                case 3: ToggleMute(_current); handled = true; break;
+            }
+        }
+        return IntPtr.Zero;
     }
 
     private void RestorePlacement()
@@ -118,8 +155,14 @@ public partial class MainWindow : Window
             Height = _settings.WinHeight;
             if (!double.IsNaN(_settings.WinLeft) && !double.IsNaN(_settings.WinTop))
             {
-                Left = _settings.WinLeft;
-                Top = _settings.WinTop;
+                // モニター構成変更で完全画面外になっていたら既定位置のままにする
+                var vs = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                    SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+                if (vs.IntersectsWith(new Rect(_settings.WinLeft, _settings.WinTop, _settings.WinWidth, _settings.WinHeight)))
+                {
+                    Left = _settings.WinLeft;
+                    Top = _settings.WinTop;
+                }
             }
             if (_settings.WinMaximized) WindowState = WindowState.Maximized;
         }
@@ -132,6 +175,7 @@ public partial class MainWindow : Window
         {
             Diagnostics.Log($"TwinCord v{Diagnostics.AppVersion()} 起動");
             LoadNames();
+            LoadHistory();
             ApplySettings();
             StartTimers();
             // 逐次起動(起動ピークを抑えつつ両方常駐)
@@ -288,6 +332,7 @@ public partial class MainWindow : Window
         Diagnostics.Log($"通知({acc}): {text.Replace(Environment.NewLine, " ")}");
         _history.Insert(0, new HistoryWindow.Item(DateTime.Now, n, acc, text));
         while (_history.Count > 30) _history.RemoveAt(_history.Count - 1);
+        SaveHistory();
         Dispatcher.BeginInvoke(() => ShowBalloon(n, acc, text));
     }
 
@@ -644,7 +689,7 @@ public partial class MainWindow : Window
         {
             var n = _balloonAccount;
             BringToFront();
-            SwitchTo(n);
+            if (n is 1 or 2) SwitchTo(n);
         };
     }
 
@@ -659,6 +704,31 @@ public partial class MainWindow : Window
         });
         if (IsVisible) w.Owner = this;
         w.Show();
+    }
+
+    private static string HistoryPath() => Path.Combine(AppSettings.DataFolder(), "notifications.json");
+
+    private void LoadHistory()
+    {
+        try
+        {
+            var p = HistoryPath();
+            if (!File.Exists(p)) return;
+            var list = JsonSerializer.Deserialize<List<HistoryWindow.Item>>(File.ReadAllText(p));
+            if (list is null) return;
+            _history.AddRange(list.Take(30));
+        }
+        catch { }
+    }
+
+    private void SaveHistory()
+    {
+        try
+        {
+            Directory.CreateDirectory(AppSettings.DataFolder());
+            File.WriteAllText(HistoryPath(), JsonSerializer.Serialize(_history.Take(30).ToList()));
+        }
+        catch { }
     }
 
     private void ShowMain()
@@ -707,6 +777,18 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero)
+            {
+                UnregisterHotKey(hwnd, 1);
+                UnregisterHotKey(hwnd, 2);
+                UnregisterHotKey(hwnd, 3);
+            }
+            _hotkeySource?.RemoveHook(WndProcHook);
+        }
+        catch { }
         _tray?.Dispose();
         base.OnClosed(e);
     }
@@ -774,9 +856,31 @@ public partial class MainWindow : Window
                 await UpdateBadgeAsync(View1, Badge1, Badge1Text);
             if (_view1Ready) await UpdateVoiceAsync(1);
             if (_view2Ready) await UpdateVoiceAsync(2);
+            SyncZoom(1);
+            SyncZoom(2);
         }
         catch { }
         finally { _badgeBusy = false; }
+    }
+
+    // ページ側のCtrl+ホイール変更を取込んで保存
+    private void SyncZoom(int n)
+    {
+        try
+        {
+            var view = n == 1 ? View1 : View2;
+            if ((n == 1 && !_view1Ready) || (n == 2 && !_view2Ready)) return;
+            var z = AppSettings.ClampZoom(view.ZoomFactor);
+            if (n == 1)
+            {
+                if (Math.Abs(_settings.Zoom1 - z) > 0.01) { _settings.Zoom1 = z; _settings.Save(); }
+            }
+            else
+            {
+                if (Math.Abs(_settings.Zoom2 - z) > 0.01) { _settings.Zoom2 = z; _settings.Save(); }
+            }
+        }
+        catch { }
     }
 
     private async Task UpdateVoiceAsync(int n)
@@ -832,6 +936,15 @@ public partial class MainWindow : Window
                     _diag.ReportFail("badge"); // スクリプト内部異常=Discord側の構造変化の疑い
                     return;
                 }
+                if (_settings.CountUnreadChannels)
+                {
+                    try
+                    {
+                        var uraw = (await view.CoreWebView2.ExecuteScriptAsync(UnreadScript))?.Trim();
+                        if (int.TryParse(uraw, out var u) && u > 0) n += u;
+                    }
+                    catch { }
+                }
                 _diag.ReportOk("badge");
                 if (n > 0)
                 {
@@ -856,13 +969,14 @@ public partial class MainWindow : Window
         _healthBusy = true;
         try
         {
-            if (_view1Ready && !_inVoice1) await PingAsync(View1);
-            if (_view2Ready && !_inVoice2) await PingAsync(View2);
+            // 表示中は再読み込みせず報告のみ(読書中のページを奪わない)
+            if (_view1Ready && !_inVoice1) await PingAsync(View1, _current != 1);
+            if (_view2Ready && !_inVoice2) await PingAsync(View2, _current != 2);
         }
         finally { _healthBusy = false; }
     }
 
-    private async Task PingAsync(Microsoft.Web.WebView2.Wpf.WebView2 view)
+    private async Task PingAsync(Microsoft.Web.WebView2.Wpf.WebView2 view, bool allowReload)
     {
         try
         {
@@ -872,7 +986,7 @@ public partial class MainWindow : Window
             if (await Task.WhenAny(t, Task.Delay(10000)) != t)
             {
                 _diag.ReportFail("page");
-                try { core.Reload(); } catch { }
+                if (allowReload) { try { core.Reload(); } catch { } }
                 return;
             }
             await t;
@@ -881,7 +995,7 @@ public partial class MainWindow : Window
         catch
         {
             _diag.ReportFail("page");
-            try { view.CoreWebView2?.Reload(); } catch { }
+            if (allowReload) { try { view.CoreWebView2?.Reload(); } catch { } }
         }
     }
 
@@ -895,6 +1009,7 @@ public partial class MainWindow : Window
             var name = Diagnostics.DisplayName(key);
             var msg = $"「{name}」が動作しなくなりました。Discord側の更新により TwinCord v{Diagnostics.AppVersion()} が古くなった可能性があります。設定(歯車)→アプリについて→自己診断で詳細を確認してください。";
             Diagnostics.Log("通知: " + msg.Replace(Environment.NewLine, " "));
+            _balloonAccount = -1; // 警告クリックではアカ切替しない
             if (_tray is not null && _tray.Visible)
                 _tray.ShowBalloonTip(8000, "TwinCord", msg, WinForms.ToolTipIcon.Warning);
             else
