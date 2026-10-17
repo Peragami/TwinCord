@@ -11,9 +11,35 @@ public partial class App : System.Windows.Application
 {
     private Mutex? _mutex;
     private EventWaitHandle? _showEvent;
+    private bool _errorReported;
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // 例外でプロセスが黙って消えないよう、最後の砦でログに残す
+        DispatcherUnhandledException += (_, args) =>
+        {
+            Diagnostics.Log("未処理例外(UI): " + args.Exception);
+            if (!_errorReported)
+            {
+                _errorReported = true;
+                try
+                {
+                    System.Windows.MessageBox.Show(
+                        "予期しないエラーが発生しました。診断ログに記録しました。\n" + args.Exception.Message,
+                        "TwinCord", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                catch { }
+            }
+            args.Handled = true; // 常駐アプリのため落とさず継続する
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            Diagnostics.Log("未処理例外(致命的): " + args.ExceptionObject);
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            Diagnostics.Log("未処理タスク例外: " + args.Exception);
+            args.SetObserved();
+        };
+
         _mutex = new Mutex(true, "TwinCord_SingleInstance", out var created);
         if (!created)
         {

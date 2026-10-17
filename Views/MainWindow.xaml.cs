@@ -33,22 +33,20 @@ public partial class MainWindow : Window
     [DllImport("user32.dll")]
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
-    // Discordページ内でCtrl+1/2を拾ってホストに通知するJS
+    // Discordページ内でCtrl+1/2を拾ってホストに通知するJS(トップフレームのみ)
     private const string HotkeyScript =
-        "window.addEventListener('keydown',function(e){if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='1'||e.key==='2')){var t=e.target;if(t){var tn=(t.tagName||'').toUpperCase();if(tn==='INPUT'||tn==='TEXTAREA')return;if(t.closest&&t.closest('[contenteditable=\"true\"]'))return;}chrome.webview.postMessage('switch:'+e.key);}});";
+        "(function(){try{if(window.top!==window)return;}catch(e){return;}window.addEventListener('keydown',function(e){if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='1'||e.key==='2')){var t=e.target;if(t){var tn=(t.tagName||'').toUpperCase();if(tn==='INPUT'||tn==='TEXTAREA')return;if(t.closest&&t.closest('[contenteditable=\"true\"]'))return;}chrome.webview.postMessage('switch:'+e.key);}});})();";
 
-    // Discordのデスクトップ通知を横取りしてホストに転送するJS(DM・メンション等すべて)
+    // Discordのデスクトップ通知を横取りしてホストに転送するJS(DM・メンション等すべて、トップフレームのみ)
     // 本物のNotificationは作らない(二重通知防止のためダミーを返す)
     private const string NotifyScript =
-        "(function(){try{var stub={close:function(){},addEventListener:function(){},removeEventListener:function(){}};function Hooked(t,o){try{chrome.webview.postMessage('notify:'+JSON.stringify({title:t||'',body:(o&&o.body)||''}));}catch(e){}return stub;}Hooked.permission='granted';Hooked.requestPermission=function(){return Promise.resolve('granted');};window.Notification=Hooked;}catch(e){}})();";
+        "(function(){try{if(window.top!==window)return;var stub={close:function(){},addEventListener:function(){},removeEventListener:function(){}};function Hooked(t,o){try{chrome.webview.postMessage('notify:'+JSON.stringify({title:t||'',body:(o&&o.body)||''}));}catch(e){}return stub;}Hooked.permission='granted';Hooked.requestPermission=function(){return Promise.resolve('granted');};window.Notification=Hooked;}catch(e){}})();";
 
     // サーバーリストの「アプリをダウンロード」ボタンを隠すJS(ベストエフォート)
     // 実体はdiv系要素のため、短文テキスト一致＋属性判定で探す(祖先巻き込み防止に文字数制限)
     private const string HideDownloadScript =
         "(function(){try{if(window.top!==window)return;}catch(e){return;}try{var css='a[href=\"/download\"],a[href^=\"/download?\"],a[href*=\"discord.com/download\"]{display:none!important}';var st=document.createElement('style');st.textContent=css;(document.head||document.documentElement).appendChild(st);}catch(e){}function isDl(el){try{var g=function(n){try{return el.getAttribute(n)||'';}catch(x){return '';};};var al=g('aria-label')+'|'+g('title');if(/download/i.test(al)&&/apps?/i.test(al))return true;if(al.indexOf('ダウンロード')>=0&&al.indexOf('アプリ')>=0)return true;var t='';try{t=(el.textContent||'').trim();}catch(x){}if(t.length>0&&t.length<=30){if(t==='アプリをダウンロード')return true;if(/download apps?/i.test(t))return true;}return false;}catch(e){return false;}}function kill(){try{var els=document.querySelectorAll('nav div,div[role=\"button\"],div[role=\"treeitem\"],div[tabindex],button,a');for(var i=0;i<els.length;i++){if(isDl(els[i])){els[i].style.setProperty('display','none','important');}}}catch(e){}}try{kill();setInterval(kill,3000);}catch(e){}})();";
 
-    private string _acc1Name = "Acc1";
-    private string _acc2Name = "Acc2";
     private int _current = 1;
 
     private AppSettings _settings = AppSettings.Load();
@@ -65,6 +63,9 @@ public partial class MainWindow : Window
     private readonly UpdateService _updates;
     private WindowPlacementTracker? _placement;
     private PageWatchdog? _watchdog;
+    private SettingsWindow? _settingsWindow;
+    private HistoryWindow? _historyWindow;
+    private UpdateDialog? _updateDialog;
     private bool _exiting;
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
@@ -93,7 +94,7 @@ public partial class MainWindow : Window
                 View = View1,
                 IsReady = () => _view1Ready,
                 ActionButton = Acc1Button,
-                AccountName = () => _acc1Name,
+                AccountName = () => _settings.Acc1Name,
                 Badge = Badge1,
                 BadgeText = Badge1Text,
             },
@@ -102,7 +103,7 @@ public partial class MainWindow : Window
                 View = View2,
                 IsReady = () => _view2Ready,
                 ActionButton = Acc2Button,
-                AccountName = () => _acc2Name,
+                AccountName = () => _settings.Acc2Name,
                 Badge = Badge2,
                 BadgeText = Badge2Text,
             },
@@ -134,18 +135,25 @@ public partial class MainWindow : Window
         try
         {
             // グローバルホットキー: Ctrl+Alt+1/2=切替、Ctrl+Alt+M=表示中ミュート
+            // MOD_NOREPEAT(0x4000)でキー長押しの連続発火を防ぐ
             var hwnd = new WindowInteropHelper(this).Handle;
             _hotkeySource = HwndSource.FromHwnd(hwnd);
             _hotkeySource?.AddHook(WndProcHook);
-            const uint mod = 0x0001 | 0x0002; // Alt | Ctrl
+            const uint mod = 0x0001 | 0x0002 | 0x4000; // Alt | Ctrl | MOD_NOREPEAT
             if (!RegisterHotKey(hwnd, 1, mod, 0x31))
-                Diagnostics.Log("グローバルホットキー登録失敗: Ctrl+Alt+1");
+                ReportHotkeyFailure("Ctrl+Alt+1");
             if (!RegisterHotKey(hwnd, 2, mod, 0x32))
-                Diagnostics.Log("グローバルホットキー登録失敗: Ctrl+Alt+2");
+                ReportHotkeyFailure("Ctrl+Alt+2");
             if (!RegisterHotKey(hwnd, 3, mod, 0x4D))
-                Diagnostics.Log("グローバルホットキー登録失敗: Ctrl+Alt+M");
+                ReportHotkeyFailure("Ctrl+Alt+M");
         }
         catch { }
+    }
+
+    private void ReportHotkeyFailure(string keys)
+    {
+        Diagnostics.Log($"グローバルホットキー登録失敗: {keys} (他アプリが使用中の可能性)");
+        _diag.ReportFail("hotkey");
     }
 
     private IntPtr WndProcHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -167,7 +175,7 @@ public partial class MainWindow : Window
         try
         {
             Diagnostics.Log($"TwinCord v{Diagnostics.AppVersion()} 起動");
-            LoadNames();
+            RefreshRail();
             _history.Load();
             ApplySettings();
             _watchdog?.Start();
@@ -181,7 +189,7 @@ public partial class MainWindow : Window
                 _ = _watchdog.TryUpdateAvatarAsync(1);
                 _ = _watchdog.TryUpdateAvatarAsync(2);
             }
-            if (_settings.AutoUpdateCheck && !Updater.IsSelfContainedBuild)
+            if (_settings.AutoUpdateCheck)
                 _ = CheckUpdateOnStartupAsync();
         }
         catch (Exception ex)
@@ -194,6 +202,8 @@ public partial class MainWindow : Window
     }
 
     // ---- アカウント切替 ----
+
+    private string AccName(int n) => n == 1 ? _settings.Acc1Name : _settings.Acc2Name;
 
     private void Acc1Button_Click(object sender, RoutedEventArgs e) => SwitchTo(1);
     private void Acc2Button_Click(object sender, RoutedEventArgs e) => SwitchTo(2);
@@ -295,12 +305,29 @@ public partial class MainWindow : Window
             _diag.ReportFail("page");
             try { view.CoreWebView2?.Reload(); } catch { }
         });
+        // Discord内部のポップアップ(OAuthログイン等)は既定の新規ウィンドウに任せ、
+        // 外部サイトのリンクだけ既定ブラウザで開く
+        view.CoreWebView2.NewWindowRequested += (_, e) =>
+        {
+            var uri = e.Uri ?? "";
+            if (uri.Contains("discord.com", StringComparison.OrdinalIgnoreCase)) return;
+            e.Handled = true;
+            if (string.IsNullOrEmpty(uri)) return;
+            try { Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true }); }
+            catch { }
+        };
         view.CoreWebView2.Navigate("https://discord.com/channels/@me");
     }
 
     // Discordページ内Ctrl+1/2・通知の受信
     private void View_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
+        // 注入スクリプトはサブフレームでも動くため、別オリジンのiframeからのメッセージは無視する
+        // (iframeの自前スクリプトによる偽装を防ぐ。トップフレーム側のガードと併用)
+        // Sourceが空の場合はWebView2側がURIを特定できていないだけなので通す(通知が止まる方が害が大きい)
+        var source = e.Source;
+        if (!string.IsNullOrEmpty(source)
+            && !source.Contains("discord.com", StringComparison.OrdinalIgnoreCase)) return;
         var msg = e.TryGetWebMessageAsString();
         if (msg == "switch:1") SwitchTo(1);
         else if (msg == "switch:2") SwitchTo(2);
@@ -313,12 +340,13 @@ public partial class MainWindow : Window
         int n = ReferenceEquals(sender, View2) ? 2 : 1;
         // マスターOFFでは記録も通知もしない
         if (!_settings.NotifyEnabled) return;
-        bool focused = IsVisible && WindowState != WindowState.Minimized;
+        // 前面で操作中のときだけ「表示中」とみなす(背面にあるだけでは通知を抑えない)
+        bool focused = IsVisible && WindowState != WindowState.Minimized && IsActive;
         // 格納中のみ通知する設定なら、表示中はすべて出さない
         if (focused && _settings.NotifyHiddenOnly) return;
         // 見ている最中のアカウントは通知不要(設定で変更可)
         if (focused && _current == n && _settings.SkipViewedAccount) return;
-        var acc = n == 1 ? _acc1Name : _acc2Name;
+        var acc = AccName(n);
         string title = acc, body = "";
         try
         {
@@ -348,10 +376,10 @@ public partial class MainWindow : Window
     private void RefreshRail()
     {
         _watchdog?.RefreshAccountIcons();
-        Acc1Button.ToolTip = _acc1Name + (IsMuted(View1) ? " (ミュート中)" : "");
-        Acc1Label.Text = _acc1Name;
-        Acc2Button.ToolTip = _acc2Name + (IsMuted(View2) ? " (ミュート中)" : "");
-        Acc2Label.Text = _acc2Name;
+        Acc1Button.ToolTip = _settings.Acc1Name + (IsMuted(View1) ? " (ミュート中)" : "");
+        Acc1Label.Text = _settings.Acc1Name;
+        Acc2Button.ToolTip = _settings.Acc2Name + (IsMuted(View2) ? " (ミュート中)" : "");
+        Acc2Label.Text = _settings.Acc2Name;
         View1.Visibility = _current == 1 && _view1Ready ? Visibility.Visible : Visibility.Collapsed;
         View2.Visibility = _current == 2 && _view2Ready ? Visibility.Visible : Visibility.Collapsed;
         Pill1.Visibility = _current == 1 ? Visibility.Visible : Visibility.Collapsed;
@@ -363,7 +391,7 @@ public partial class MainWindow : Window
     private void SendTestNotification()
     {
         var n = _current;
-        var acc = n == 1 ? _acc1Name : _acc2Name;
+        var acc = AccName(n);
         Diagnostics.Log("テスト通知送信");
         _tray.ShowBalloon("TwinCord - " + acc, "テスト通知\nこれはテストです。クリックでこのアカウントを表示します。",
             WinForms.ToolTipIcon.Info, 8000, () =>
@@ -390,7 +418,7 @@ public partial class MainWindow : Window
             var c = view.CoreWebView2;
             if (c is null) return;
             c.IsMuted = !c.IsMuted;
-            Diagnostics.Log($"{(n == 1 ? _acc1Name : _acc2Name)} ミュート{(c.IsMuted ? "ON" : "OFF")}");
+            Diagnostics.Log($"{AccName(n)} ミュート{(c.IsMuted ? "ON" : "OFF")}");
             RefreshRail();
         }
         catch { }
@@ -410,12 +438,12 @@ public partial class MainWindow : Window
 
     private void RenameAcc(int n)
     {
-        var current = n == 1 ? _acc1Name : _acc2Name;
-        var next = PromptName(current);
+        var next = PromptName(AccName(n));
         if (next is null) return;
-        if (n == 1) _acc1Name = next; else _acc2Name = next;
-        RefreshRail();
+        if (n == 1) _settings.Acc1Name = next; else _settings.Acc2Name = next;
+        _settings.Save();
         SaveNames();
+        RefreshRail();
     }
 
     private string? PromptName(string current)
@@ -446,28 +474,13 @@ public partial class MainWindow : Window
         return dlg.ShowDialog() == true && box.Text.Trim().Length > 0 ? box.Text.Trim() : null;
     }
 
-    private void LoadNames()
-    {
-        try
-        {
-            var file = Path.Combine(AppSettings.DataFolder(), "names.txt");
-            if (!File.Exists(file)) return;
-            var lines = File.ReadAllLines(file);
-            if (lines.Length > 0 && lines[0].Trim().Length > 0)
-                _acc1Name = lines[0].Trim();
-            if (lines.Length > 1 && lines[1].Trim().Length > 0)
-                _acc2Name = lines[1].Trim();
-        }
-        catch { }
-        finally { RefreshRail(); }
-    }
-
+    /// <summary>旧バージョン(と設定リセット時)の互換用に names.txt も更新しておく。</summary>
     private void SaveNames()
     {
         try
         {
             Directory.CreateDirectory(AppSettings.DataFolder());
-            File.WriteAllLines(Path.Combine(AppSettings.DataFolder(), "names.txt"), new[] { _acc1Name, _acc2Name });
+            File.WriteAllLines(Path.Combine(AppSettings.DataFolder(), "names.txt"), new[] { _settings.Acc1Name, _settings.Acc2Name });
         }
         catch { }
     }
@@ -487,6 +500,12 @@ public partial class MainWindow : Window
 
     private void OpenSettings()
     {
+        // 二重に開いて後から保存した方だけが反映されるのを防ぐ
+        if (_settingsWindow?.IsLoaded == true)
+        {
+            _settingsWindow.Activate();
+            return;
+        }
         var draft = _settings.Clone();
         var w = new SettingsWindow(draft) { Owner = IsVisible ? this : null };
         w.Diagnose = RunDiagnosticsAsync;
@@ -494,11 +513,19 @@ public partial class MainWindow : Window
         w.ExportRequested = ExportBundle;
         w.ImportRequested = ImportBundle;
         w.TestNotifyRequested = SendTestNotification;
-        if (w.ShowDialog() == true)
+        _settingsWindow = w;
+        try
         {
-            _settings = draft;
-            _settings.Save();
-            ApplySettings();
+            if (w.ShowDialog() == true)
+            {
+                _settings = draft;
+                _settings.Save();
+                ApplySettings();
+            }
+        }
+        finally
+        {
+            _settingsWindow = null;
         }
         UpdateGearAlert();
     }
@@ -525,10 +552,13 @@ public partial class MainWindow : Window
     private Task CheckUpdateOnStartupAsync() =>
         _updates.StartupCheckAsync(info =>
         {
+            // 自己完結版は自動差し替えの対象外なので、手動更新が必要なことを伝える
+            var text = Updater.IsSelfContainedBuild
+                ? $"新しいバージョン {info.Tag} があります。クリックで詳細(自己完結版は手動更新)"
+                : $"新しいバージョン {info.Tag} があります。クリックで更新";
             return Dispatcher.InvokeAsync(() =>
             {
-                _tray.ShowBalloon("TwinCord",
-                    $"新しいバージョン {info.Tag} があります。クリックで更新",
+                _tray.ShowBalloon("TwinCord", text,
                     WinForms.ToolTipIcon.Info, 15000, () =>
                     {
                         BringToFront();
@@ -559,8 +589,23 @@ public partial class MainWindow : Window
 
     private void OpenUpdateDialog(UpdateInfo info)
     {
+        if (_updateDialog?.IsLoaded == true)
+        {
+            _updateDialog.Activate();
+            return;
+        }
         var w = new UpdateDialog(info) { Owner = IsVisible ? this : null };
-        if (w.ShowDialog() == true)
+        _updateDialog = w;
+        bool applied;
+        try
+        {
+            applied = w.ShowDialog() == true;
+        }
+        finally
+        {
+            _updateDialog = null;
+        }
+        if (applied)
         {
             _exiting = true;
             Close();
@@ -582,7 +627,7 @@ public partial class MainWindow : Window
                 app = "TwinCord",
                 version = 1,
                 settings = _settings,
-                names = new[] { _acc1Name, _acc2Name },
+                names = new[] { _settings.Acc1Name, _settings.Acc2Name },
             };
             File.WriteAllText(dlg.FileName,
                 JsonSerializer.Serialize(bundle, new JsonSerializerOptions { WriteIndented = true }));
@@ -614,15 +659,19 @@ public partial class MainWindow : Window
                 {
                     ns.Zoom1 = AppSettings.ClampZoom(ns.Zoom1);
                     ns.Zoom2 = AppSettings.ClampZoom(ns.Zoom2);
+                    ns.NamesMigrated = true; // 旧names.txtを後から読み直さない
                     _settings = ns;
                     _settings.Save();
                 }
             }
+            // 旧形式のバンドルに含まれる名前も受け付ける
             if (r.TryGetProperty("names", out var nm) && nm.ValueKind == JsonValueKind.Array)
             {
                 var arr = nm.EnumerateArray().Select(e => e.GetString() ?? "").ToArray();
-                if (arr.Length > 0 && arr[0].Trim().Length > 0) _acc1Name = arr[0].Trim();
-                if (arr.Length > 1 && arr[1].Trim().Length > 0) _acc2Name = arr[1].Trim();
+                if (arr.Length > 0 && arr[0].Trim().Length > 0) _settings.Acc1Name = arr[0].Trim();
+                if (arr.Length > 1 && arr[1].Trim().Length > 0) _settings.Acc2Name = arr[1].Trim();
+                _settings.NamesMigrated = true;
+                _settings.Save();
                 SaveNames();
             }
             RefreshRail();
@@ -678,27 +727,25 @@ public partial class MainWindow : Window
 
     private void OpenHistory()
     {
+        if (_historyWindow?.IsLoaded == true)
+        {
+            _historyWindow.Activate();
+            return;
+        }
         var w = new HistoryWindow(new List<HistoryWindow.Item>(_history.Items), n =>
         {
             BringToFront();
             SwitchTo(n);
         });
         if (IsVisible) w.Owner = this;
+        w.Closed += (_, _) => _historyWindow = null;
+        _historyWindow = w;
         w.Show();
     }
 
     private void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
         _placement?.Save();
-        try
-        {
-            // トースト実験時代の残骸ショートカットを掃除
-            var lnk = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                @"Microsoft\Windows\Start Menu\Programs\TwinCord.lnk");
-            if (File.Exists(lnk)) File.Delete(lnk);
-        }
-        catch { }
         if (_settings.MinimizeToTray && !_exiting)
         {
             e.Cancel = true;

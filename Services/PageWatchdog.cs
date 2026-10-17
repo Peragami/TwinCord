@@ -24,9 +24,17 @@ public sealed class PageWatchdog
         public required System.Windows.Controls.TextBlock BadgeText { get; init; }
     }
 
-    // 通話中検出用JS(切断ボタンが出ていれば通話中とみなす)
+    // 通話中検出用JS。切断ボタンのaria-labelはロケール依存のため主要言語を列挙し、
+    // さらにロケール非依存のRTCパネル要素を保険として見る。取りこぼすと通話中に
+    // メモリを絞ってしまうため、判断がつかないときは '-1'(判定不能)を返し、
+    // 呼び出し側は状態を維持して安全側に倒す。
     private const string VoiceScript =
-        "(()=>{try{return document.querySelector('[aria-label=\"切断\"],[aria-label=\"Disconnect\"],[aria-label=\"Desconectar\"],[aria-label=\"Déconnecter\"],[aria-label=\"Trennen\"],[aria-label=\"Disconnetti\"],[aria-label=\"Desligar\"],[aria-label=\"Verbinding verbreken\"],[aria-label=\"Rozłącz\"],[aria-label=\"Отключиться\"],[aria-label=\"연결 해제\"],[aria-label=\"断开连接\"],[aria-label=\"斷開連接\"]')?'1':'0';}catch(e){return '0';}})()";
+        "(()=>{try{" +
+        "var l=['切断','Disconnect','Desconectar','Déconnecter','Trennen','Disconnetti','Desligar','Verbinding verbreken','Rozłącz','Отключиться','연결 해제','断开连接','斷開連接','Bağlantıyı Kes','Ngắt','ตัดการเชื่อมต่อ','Putuskan','Deconectare','Αποσύνδεση','Leválasztás','Odpojit','Katkaise','Koble fra','Afbryd','Koppla från'];" +
+        "for(var i=0;i<l.length;i++){if(document.querySelector('[aria-label=\"'+l[i]+'\"]'))return '1';}" +
+        "if(document.querySelector('[aria-label*=\"Від\"]'))return '1';" +
+        "if(document.querySelector('[class*=\"rtcConnectionStatus\"],[class*=\"voicePanel\"],[class*=\"callContainer\"]'))return '1';" +
+        "return '0';}catch(e){return '-1';}})()";
     private const string AvatarScript =
         "(()=>{try{var btn=document.querySelector('[aria-label=\"ユーザー設定\"],[aria-label=\"User Settings\"]');var scope=btn?btn.parentElement:null;var img=null;for(var i=0;i<4&&scope;i++){img=scope.querySelector('img[src*=\"avatars/\"]');if(img)break;scope=scope.parentElement;}if(!img){var all=document.querySelectorAll('[class*=\"panels\"] img[src*=\"avatars/\"]');if(all.length)img=all[0];}if(!img)return '';var src=img.src||'';if(!src)return '';return src.split('?')[0]+'?size=64';}catch(e){return '';}})()";
 
@@ -76,8 +84,10 @@ public sealed class PageWatchdog
         try
         {
             var slot = Slot(n);
-            if (slot.View.CoreWebView2 is null) return "実行失敗";
-            var raw = (await slot.View.CoreWebView2.ExecuteScriptAsync(BadgeScript))?.Trim();
+            var core = slot.View.CoreWebView2;
+            if (core is null) return "実行失敗";
+            var raw = await EvalAsync(core, BadgeScript);
+            if (raw is null) return "実行失敗";
             if (!int.TryParse(raw, out var count)) return "判定不能";
             return count < 0 ? "スクリプト異常" : count.ToString();
         }
@@ -130,6 +140,25 @@ public sealed class PageWatchdog
 
     private AccountSlot Slot(int n) => n == 1 ? _acc1 : _acc2;
 
+    /// <summary>
+    /// スクリプト実行の共通ラッパ。タイムアウト/例外時はnullを返す。
+    /// awaitしっぱなしになると _busy フラグが立ったまま監視が永久に止まるため、必ず時間で打ち切る。
+    /// </summary>
+    private static async Task<string?> EvalAsync(CoreWebView2 core, string script, int timeoutMs = 10000)
+    {
+        try
+        {
+            var task = core.ExecuteScriptAsync(script);
+            if (await Task.WhenAny(task, Task.Delay(timeoutMs)) != task)
+                return null;
+            return (await task)?.Trim();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private async void AvatarTimer_Tick(object? sender, EventArgs e)
     {
         if (_avatarBusy) return;
@@ -148,8 +177,12 @@ public sealed class PageWatchdog
         try
         {
             var slot = Slot(n);
-            if (!slot.IsReady() || slot.View.CoreWebView2 is null) return;
-            var url = (await slot.View.CoreWebView2.ExecuteScriptAsync(AvatarScript))?.Trim().Trim('"');
+            if (!slot.IsReady()) return;
+            var core = slot.View.CoreWebView2;
+            if (core is null) return;
+            var raw = await EvalAsync(core, AvatarScript);
+            if (raw is null) return;
+            var url = raw.Trim('"');
             if (string.IsNullOrEmpty(url)) return;
             if (n == 1)
             {
@@ -265,27 +298,19 @@ public sealed class PageWatchdog
         try
         {
             var slot = Slot(n);
-            if (slot.View.CoreWebView2 is null) return;
-            var raw = (await slot.View.CoreWebView2.ExecuteScriptAsync(VoiceScript))?.Trim().Trim('"');
-            bool voice = raw == "1";
-            if (n == 1)
-            {
-                if (_inVoice1 != voice)
-                {
-                    _inVoice1 = voice;
-                    Diagnostics.Log($"Acc1 通話{(voice ? "開始" : "終了")}");
-                    RefreshMemoryLevels();
-                }
-            }
-            else
-            {
-                if (_inVoice2 != voice)
-                {
-                    _inVoice2 = voice;
-                    Diagnostics.Log($"Acc2 通話{(voice ? "開始" : "終了")}");
-                    RefreshMemoryLevels();
-                }
-            }
+            var core = slot.View.CoreWebView2;
+            if (core is null) return;
+            var raw = await EvalAsync(core, VoiceScript);
+            if (raw is null) return; // タイムアウト等は状態を維持
+            var v = raw.Trim('"');
+            bool? voice = v == "1" ? true : v == "0" ? false : null;
+            // 判定不能(ロケール未対応・DOM変更)は状態を維持して安全側に倒す(通話中に絞らない)
+            if (voice is null) return;
+            bool inVoice = voice.Value;
+            if (n == 1 ? _inVoice1 == inVoice : _inVoice2 == inVoice) return;
+            if (n == 1) _inVoice1 = inVoice; else _inVoice2 = inVoice;
+            Diagnostics.Log($"Acc{n} 通話{(inVoice ? "開始" : "終了")}");
+            RefreshMemoryLevels();
         }
         catch { }
     }
@@ -295,8 +320,14 @@ public sealed class PageWatchdog
         var slot = Slot(n);
         try
         {
-            if (slot.View.CoreWebView2 is null) return;
-            var raw = (await slot.View.CoreWebView2.ExecuteScriptAsync(BadgeScript))?.Trim();
+            var core = slot.View.CoreWebView2;
+            if (core is null) return;
+            var raw = await EvalAsync(core, BadgeScript);
+            if (raw is null)
+            {
+                _diag.ReportFail("badge"); // 応答なし(ハング/タイムアウト)
+                return;
+            }
             if (int.TryParse(raw, out var count))
             {
                 if (count < 0)
@@ -308,8 +339,8 @@ public sealed class PageWatchdog
                 {
                     try
                     {
-                        var uraw = (await slot.View.CoreWebView2.ExecuteScriptAsync(UnreadScript))?.Trim();
-                        if (int.TryParse(uraw, out var u) && u > 0) count += u;
+                        var uraw = await EvalAsync(core, UnreadScript);
+                        if (uraw is not null && int.TryParse(uraw, out var u) && u > 0) count += u;
                     }
                     catch { }
                 }
@@ -351,14 +382,13 @@ public sealed class PageWatchdog
         {
             var core = view.CoreWebView2;
             if (core is null) return;
-            var t = core.ExecuteScriptAsync("document.readyState");
-            if (await Task.WhenAny(t, Task.Delay(10000)) != t)
+            var state = await EvalAsync(core, "document.readyState");
+            if (state is null)
             {
                 _diag.ReportFail("page");
                 if (allowReload) { try { core.Reload(); } catch { } }
                 return;
             }
-            await t;
             _diag.ReportOk("page");
         }
         catch

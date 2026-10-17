@@ -38,7 +38,10 @@ public sealed class UpdateService
             if (info is null) return;
             await onNewer(info);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Diagnostics.Log("起動時の更新確認に失敗: " + ex.Message);
+        }
     }
 
     public async Task TrayCheckAsync(Func<UpdateInfo, Task> onNewer, Func<string, bool, Task> onMessage)
@@ -51,30 +54,22 @@ public sealed class UpdateService
                 await onMessage("確認できませんでした。", true);
                 return;
             }
-            if (!Updater.IsNewer(_currentVersion(), info.Version) || string.IsNullOrEmpty(info.AssetUrl))
+            if (!Updater.IsNewer(_currentVersion(), info.Version))
             {
                 await onMessage($"最新です(v{_currentVersion()})。", false);
                 return;
             }
+            if (string.IsNullOrEmpty(info.AssetUrl))
+            {
+                // 配布ファイルが無い、または取得先が想定外(手動更新が必要)
+                await onMessage($"新しいバージョン {info.Tag} があります。手動で更新してください。", true);
+                return;
+            }
             await onNewer(info);
-        }
-        catch { }
-    }
-
-    public async Task<string> ManualCheckMessageAsync()
-    {
-        try
-        {
-            var info = await Updater.FetchLatestAsync(_http);
-            if (info is null)
-                return "確認できませんでした。";
-            if (Updater.IsNewer(_currentVersion(), info.Version))
-                return $"新しいバージョンがあります: {info.Tag}\nトレイメニューの更新確認か、起動時の通知から更新できます。";
-            return $"最新です(v{_currentVersion()})。";
         }
         catch (Exception ex)
         {
-            return "確認できませんでした: " + ex.GetType().Name;
+            Diagnostics.Log("更新確認に失敗: " + ex.Message);
         }
     }
 }

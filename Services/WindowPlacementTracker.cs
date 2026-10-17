@@ -25,19 +25,19 @@ public sealed class WindowPlacementTracker
         try
         {
             var s = _settings();
-            if (double.IsNaN(s.WinWidth) || double.IsNaN(s.WinHeight)
-                || s.WinWidth < 200 || s.WinHeight < 200) return;
-            _window.Width = s.WinWidth;
-            _window.Height = s.WinHeight;
-            if (!double.IsNaN(s.WinLeft) && !double.IsNaN(s.WinTop))
+            if (s.WinWidth is not double width || s.WinHeight is not double height
+                || width < 200 || height < 200) return;
+            _window.Width = width;
+            _window.Height = height;
+            if (s.WinLeft is double left && s.WinTop is double top)
             {
                 // モニター構成変更で完全画面外になっていたら既定位置のままにする
                 var vs = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
                     SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
-                if (vs.IntersectsWith(new Rect(s.WinLeft, s.WinTop, s.WinWidth, s.WinHeight)))
+                if (vs.IntersectsWith(new Rect(left, top, width, height)))
                 {
-                    _window.Left = s.WinLeft;
-                    _window.Top = s.WinTop;
+                    _window.Left = left;
+                    _window.Top = top;
                 }
             }
             if (s.WinMaximized) _window.WindowState = WindowState.Maximized;
