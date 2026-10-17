@@ -22,6 +22,10 @@ public class AppSettings
     public string Acc2Name { get; set; } = "Acc2";
     /// <summary>旧names.txtからの移行が済んだか(移行は一度だけ行う)。</summary>
     public bool NamesMigrated { get; set; }
+
+    /// <summary>アカウント名の最大文字数(表示崩れ防止)。</summary>
+    public const int NameMaxLength = 24;
+
     public double Zoom1 { get; set; } = 1.0;
     public double Zoom2 { get; set; } = 1.0;
     // 未保存はnull。NaNはJSONに書けず保存自体が例外になるため使わない
@@ -64,8 +68,30 @@ public class AppSettings
         }
         s.Zoom1 = ClampZoom(s.Zoom1);
         s.Zoom2 = ClampZoom(s.Zoom2);
+        // 手書き/インポートされた設定でも表示が崩れないよう、名前を正規化しておく
+        s.Acc1Name = CleanNameOr(s.Acc1Name, "Acc1");
+        s.Acc2Name = CleanNameOr(s.Acc2Name, "Acc2");
         MigrateNames(s);
         return s;
+    }
+
+    /// <summary>制御文字(改行等)を除去して前後の空白を落とし、最大長で切り詰める。</summary>
+    public static string CleanName(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "";
+        var sb = new StringBuilder(raw.Length);
+        foreach (var ch in raw)
+        {
+            if (!char.IsControl(ch)) sb.Append(ch);
+        }
+        var s = sb.ToString().Trim();
+        return s.Length > NameMaxLength ? s[..NameMaxLength] : s;
+    }
+
+    private static string CleanNameOr(string? raw, string fallback)
+    {
+        var s = CleanName(raw);
+        return s.Length > 0 ? s : fallback;
     }
 
     /// <summary>旧バージョンのnames.txtを一度だけ取り込む(次回保存でsettings.json側に確定する)。</summary>
@@ -78,8 +104,8 @@ public class AppSettings
             if (File.Exists(file))
             {
                 var lines = File.ReadAllLines(file);
-                if (lines.Length > 0 && lines[0].Trim().Length > 0) s.Acc1Name = lines[0].Trim();
-                if (lines.Length > 1 && lines[1].Trim().Length > 0) s.Acc2Name = lines[1].Trim();
+                if (lines.Length > 0 && lines[0].Trim().Length > 0) s.Acc1Name = CleanNameOr(lines[0], s.Acc1Name);
+                if (lines.Length > 1 && lines[1].Trim().Length > 0) s.Acc2Name = CleanNameOr(lines[1], s.Acc2Name);
             }
         }
         catch { }

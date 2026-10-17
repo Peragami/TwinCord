@@ -458,20 +458,22 @@ public partial class MainWindow : Window
             ResizeMode = ResizeMode.NoResize,
         };
         var panel = new StackPanel { Margin = new Thickness(12) };
-        var box = new System.Windows.Controls.TextBox { Text = current };
+        var box = new System.Windows.Controls.TextBox { Text = current, MaxLength = AppSettings.NameMaxLength };
         var btns = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
         var ok = new System.Windows.Controls.Button { Content = "OK", Width = 75, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
         var cancel = new System.Windows.Controls.Button { Content = "キャンセル", Width = 75, IsCancel = true };
         ok.Click += (_, _) => dlg.DialogResult = true;
         btns.Children.Add(ok);
         btns.Children.Add(cancel);
-        panel.Children.Add(new System.Windows.Controls.TextBlock { Text = "アカウント名:" });
+        panel.Children.Add(new System.Windows.Controls.TextBlock { Text = $"アカウント名({AppSettings.NameMaxLength}文字まで):" });
         panel.Children.Add(box);
         panel.Children.Add(btns);
         dlg.Content = panel;
         box.Focus();
         box.SelectAll();
-        return dlg.ShowDialog() == true && box.Text.Trim().Length > 0 ? box.Text.Trim() : null;
+        if (dlg.ShowDialog() != true) return null;
+        var name = AppSettings.CleanName(box.Text); // 空白のみ・制御文字は弾く
+        return name.Length > 0 ? name : null;
     }
 
     /// <summary>旧バージョン(と設定リセット時)の互換用に names.txt も更新しておく。</summary>
@@ -659,6 +661,10 @@ public partial class MainWindow : Window
                 {
                     ns.Zoom1 = AppSettings.ClampZoom(ns.Zoom1);
                     ns.Zoom2 = AppSettings.ClampZoom(ns.Zoom2);
+                    ns.Acc1Name = AppSettings.CleanName(ns.Acc1Name);
+                    ns.Acc2Name = AppSettings.CleanName(ns.Acc2Name);
+                    if (ns.Acc1Name.Length == 0) ns.Acc1Name = "Acc1";
+                    if (ns.Acc2Name.Length == 0) ns.Acc2Name = "Acc2";
                     ns.NamesMigrated = true; // 旧names.txtを後から読み直さない
                     _settings = ns;
                     _settings.Save();
@@ -667,9 +673,9 @@ public partial class MainWindow : Window
             // 旧形式のバンドルに含まれる名前も受け付ける
             if (r.TryGetProperty("names", out var nm) && nm.ValueKind == JsonValueKind.Array)
             {
-                var arr = nm.EnumerateArray().Select(e => e.GetString() ?? "").ToArray();
-                if (arr.Length > 0 && arr[0].Trim().Length > 0) _settings.Acc1Name = arr[0].Trim();
-                if (arr.Length > 1 && arr[1].Trim().Length > 0) _settings.Acc2Name = arr[1].Trim();
+                var arr = nm.EnumerateArray().Select(e => AppSettings.CleanName(e.GetString())).ToArray();
+                if (arr.Length > 0 && arr[0].Length > 0) _settings.Acc1Name = arr[0];
+                if (arr.Length > 1 && arr[1].Length > 0) _settings.Acc2Name = arr[1];
                 _settings.NamesMigrated = true;
                 _settings.Save();
                 SaveNames();

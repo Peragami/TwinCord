@@ -39,6 +39,11 @@ public partial class SettingsWindow : Window
         UpdateZoomLabels();
 
         VersionText.Text = "バージョン: " + Diagnostics.AppVersion();
+        // 変更履歴はREADMEの「バージョン履歴」節(埋め込み)をそのまま表示する
+        var history = VersionHistory.Text;
+        HistoryText.Text = history.Length > 0
+            ? history
+            : "変更履歴を読み込めませんでした。READMEの「バージョン履歴」を参照してください。";
         DataText.Text = AppSettings.DataFolder();
         try
         {
