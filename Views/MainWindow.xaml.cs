@@ -554,10 +554,7 @@ public partial class MainWindow : Window
     private Task CheckUpdateOnStartupAsync() =>
         _updates.StartupCheckAsync(info =>
         {
-            // 自己完結版は自動差し替えの対象外なので、手動更新が必要なことを伝える
-            var text = Updater.IsSelfContainedBuild
-                ? $"新しいバージョン {info.Tag} があります。クリックで詳細(自己完結版は手動更新)"
-                : $"新しいバージョン {info.Tag} があります。クリックで更新";
+            var text = $"新しいバージョン {info.Tag} があります。クリックで更新";
             return Dispatcher.InvokeAsync(() =>
             {
                 _tray.ShowBalloon("TwinCord", text,

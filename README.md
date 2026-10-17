@@ -26,14 +26,14 @@ Discord公式Web版を2枚埋め込み、1プロセスで2アカウントを同�
 ## 必要環境
 
 - Windows 10 / 11 (WebView2 ランタイム標準搭載)
-- .NET 10 SDK (ビルド時) / .NET 10 ランタイム (フレームワーク依存版の実行時)
+- .NET 10 SDK (ビルド時)
+- .NET 10 ランタイム … 開発用の軽量版(`scripts\publish.bat`)を動かすときだけ必要。
+  リリースするexeはランタイム同梱なので不要
 
 ## 入手
 
-[Releases](https://github.com/Peragami/TwinCord/releases) からダウンロードしてください。
-
-- `TwinCord.exe` … 通常版(.NET 10 ランタイムが必要)。**アプリ内の自動更新の対象**
-- `TwinCord-selfcontained.exe` … ランタイム同梱版(.NET不要)。更新は手動で置き換え
+[Releases](https://github.com/Peragami/TwinCord/releases) から `TwinCord.exe` をダウンロードしてください。
+ランタイム同梱版なので **.NET のインストールは不要**です。アプリ内の自動更新にも対応しています。
 
 ## ビルド
 
@@ -44,24 +44,18 @@ dotnet build -c Release
 ## 配布物作成
 
 ```bat
-scripts\publish.bat                 :: フレームワーク依存の単一exe (publish\TwinCord.exe, .NET 10必須)
-scripts\publish-selfcontained.bat   :: ランタイム同梱の単一exe (publish-selfcontained\TwinCord.exe, 圧縮済み 約80MB)
+scripts\publish-selfcontained.bat   :: リリース用。ランタイム同梱の単一exe (.NET不要・圧縮済み 約80MB)
+scripts\publish.bat                 :: 開発用の軽量版。フレームワーク依存 (.NET 10 が必要)
 ```
 
-配布の使い分け:
+配布のルール:
 
-- `publish.bat` の成果物が**自動更新(ワンクリック更新)の対象**です。GitHub Releases に
-  この exe を添付すると、既存ユーザーへ更新が配信されます。
-- `publish-selfcontained.bat` の成果物は.NET不要で動きますが、**自動更新の対象外**です。
-  更新は新しいexeをダウンロードして置き換えてください(アプリの更新通知にもその旨が出ます)。
+- **リリースには `publish-selfcontained.bat` の成果物を `TwinCord.exe` という名前で添付**します。
+  アプリの自動更新は `TwinCord.exe` という名前の添付を探すため、この名前が必須です。
+- 自動更新は**ビルドの種類を問わず動きます**。入っているexeを丸ごと入れ替えるだけなので、
+  .NET必須の軽量版を使っていた人も次の更新で自動的にランタイム同梱版へ移行します。
+- `publish.bat` の成果物は開発中の手軽な起動用で、リリースには添付しません。
 - どちらのスクリプトも失敗時は終了コード1を返し、古いexeを残したまま成功扱いにはなりません。
-
-リリースには2つを添付します(`TwinCord.exe` が自動更新の対象、もう一方は手動更新用):
-
-| 添付ファイル | 元 | 想定 |
-|---|---|---|
-| `TwinCord.exe` | `publish\TwinCord.exe` | 通常版。自動更新で配信される |
-| `TwinCord-selfcontained.exe` | `publish-selfcontained\TwinCord.exe` | .NET不要版。手動で置き換える |
 
 ## 注意(アカウント安全性について)
 

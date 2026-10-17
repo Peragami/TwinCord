@@ -18,12 +18,9 @@ public partial class UpdateDialog : Window
         CurrentText.Text = "現在: v" + Diagnostics.AppVersion();
         LatestText.Text = "最新: " + info.Tag;
         NotesText.Text = string.IsNullOrWhiteSpace(info.Notes) ? "(変更内容の記載なし)" : info.Notes;
-        if (Updater.IsSelfContainedBuild)
-        {
-            UpdateButton.IsEnabled = false;
-            StatusText.Text = "このビルド(自己完結版)は自動更新の対象外です。手動で更新してください。";
-        }
-        else if (string.IsNullOrEmpty(info.AssetUrl))
+        // ビルドの種類(通常版/自己完結版)によらず自動更新できる。単一exeを入れ替えるだけなので、
+        // 自己完結版を使っていてもそのまま.NET不要版へ更新される。
+        if (string.IsNullOrEmpty(info.AssetUrl))
         {
             UpdateButton.IsEnabled = false;
             StatusText.Text = "配布ファイルが見つかりません。手動で更新してください。";
