@@ -12,10 +12,6 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(SelfContained)' == 'true'">
-    <DefineConstants>$(DefineConstants);SELF_CONTAINED_BUILD</DefineConstants>
-  </PropertyGroup>
-
   <!-- 単一exe配布のときは同梱物を圧縮してサイズを抑える(初回起動がやや遅くなる)
        圧縮は自己完結発行でのみサポートされる(NETSDK1176)ため、自己完結のときだけ有効にする -->
   <PropertyGroup Condition="'$(PublishSingleFile)' == 'true' and '$(SelfContained)' == 'true'">

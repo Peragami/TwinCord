@@ -30,12 +30,6 @@ public static class Updater
         return u.AbsolutePath.StartsWith("/" + Repo + "/releases/download/", StringComparison.OrdinalIgnoreCase);
     }
 
-#if SELF_CONTAINED_BUILD
-    public static bool IsSelfContainedBuild => true;
-#else
-    public static bool IsSelfContainedBuild => false;
-#endif
-
     public static async Task<UpdateInfo?> FetchLatestAsync(HttpClient http, CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, RepoLatestUrl);
