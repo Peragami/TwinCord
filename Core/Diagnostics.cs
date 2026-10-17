@@ -33,6 +33,21 @@ public class Diagnostics
     public static string AppVersion() =>
         Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "不明";
 
+    /// <summary>
+    /// 実行中のexeのパス。単一ファイル発行でも実体のexeを返す
+    /// (Assembly.Locationは単一ファイルでは空になるため使わない)。
+    /// </summary>
+    public static string ExePath()
+    {
+        var path = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(path))
+        {
+            try { path = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName; }
+            catch { path = null; }
+        }
+        return string.IsNullOrEmpty(path) ? "不明" : path;
+    }
+
     public void ReportOk(string key)
     {
         lock (_lock) { _failures[key] = 0; }

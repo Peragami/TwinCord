@@ -45,6 +45,7 @@ public partial class SettingsWindow : Window
             ? history
             : "変更履歴を読み込めませんでした。READMEの「バージョン履歴」を参照してください。";
         DataText.Text = AppSettings.DataFolder();
+        ExeText.Text = Diagnostics.ExePath();
         try
         {
             RuntimeText.Text = CoreWebView2Environment.GetAvailableBrowserVersionString();
