@@ -38,8 +38,16 @@ dotnet build -c Release
 
 ```bat
 scripts\publish.bat                 :: フレームワーク依存の単一exe (publish\TwinCord.exe, .NET 10必須)
-scripts\publish-selfcontained.bat   :: ランタイム同梱の単一exe (publish-selfcontained\TwinCord.exe, 約200MB)
+scripts\publish-selfcontained.bat   :: ランタイム同梱の単一exe (publish-selfcontained\TwinCord.exe, 圧縮済み 約80MB)
 ```
+
+配布の使い分け:
+
+- `publish.bat` の成果物が**自動更新(ワンクリック更新)の対象**です。GitHub Releases に
+  この exe を添付すると、既存ユーザーへ更新が配信されます。
+- `publish-selfcontained.bat` の成果物は.NET不要で動きますが、**自動更新の対象外**です。
+  更新は新しいexeをダウンロードして置き換えてください(アプリの更新通知にもその旨が出ます)。
+- どちらのスクリプトも失敗時は終了コード1を返し、古いexeを残したまま成功扱いにはなりません。
 
 ## 注意(アカウント安全性について)
 
@@ -47,7 +55,8 @@ scripts\publish-selfcontained.bat   :: ランタイム同梱の単一exe (publis
 
 - 表示しているのはDiscord公式Web版そのもので、トークンの抜き出しや
   非公開APIの直接利用、メッセージの自動送信・自動操作機能はありません。
-  外部通信はDiscord本体・Discord CDN(アバター画像)・GitHub(更新確認のみ)です。
+  外部通信はDiscord本体・Discord CDN(アバター画像)・GitHub(更新確認と更新ファイルの取得)です。
+  更新ファイルはGitHubの当該リポジトリからのみ取得し、SHA256で改ざん検証してから入れ替えます。
 - ページ側に行っているのは受動的な処理のみです: 通知の受け取り、
   未読バッジ等の読み取り、キー操作の検出、ダウンロードボタンの非表示化。
 - ブラウザの正体は通常のEdge(WebView2)として見えるため、一般的な
@@ -67,6 +76,8 @@ scripts\publish-selfcontained.bat   :: ランタイム同梱の単一exe (publis
 
 公開済みの番号は下げません。2.0は破壊的変更があるときだけです。
 
+履歴の記載元はこのREADMEのみです(アプリ内の「変更履歴」は下の節をそのまま読み込んで表示します)。
+
 ## バージョン履歴
 
 - 1.9.0 起動時更新確認・ワンクリック更新、通知設定ほか
@@ -77,6 +88,7 @@ scripts\publish-selfcontained.bat   :: ランタイム同梱の単一exe (publis
 - 1.6.2 バッジOFF時の監視継続・トレイアイコン等
 - 1.6.1 アプリアイコン追加
 - 1.6.0 グローバルホットキー・未読合算・履歴永続化ほか
+- 1.5.0 アカ別ミュート・通知履歴・起動改善ほか
 - 1.4.7 通知をバルーン方式に戻す(安定性優先)
 - 1.4.6 トースト不可時のバルーン代替
 - 1.4.5 テスト通知ボタン追加
