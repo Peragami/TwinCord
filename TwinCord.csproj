@@ -12,6 +12,10 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(SelfContained)' == 'true'">
+    <DefineConstants>$(DefineConstants);SELF_CONTAINED_BUILD</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
   </ItemGroup>
