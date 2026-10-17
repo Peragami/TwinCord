@@ -10,6 +10,7 @@ public sealed class TrayManager : IDisposable
     private WinForms.NotifyIcon? _tray;
     private System.Drawing.Icon? _icon;
     private Func<Task>? _clickAction;
+    private System.Windows.Threading.DispatcherTimer? _clickTimer;
     private bool _disposed;
 
     public event Action? ShowMainRequested;
@@ -56,6 +57,19 @@ public sealed class TrayManager : IDisposable
         if (_disposed) return;
         Ensure();
         _clickAction = onClick;
+        // 表示が消えた後に古いクリック動作が残らないよう、表示時間の経過でクリアする
+        if (_clickTimer is null)
+        {
+            _clickTimer = new System.Windows.Threading.DispatcherTimer();
+            _clickTimer.Tick += (_, _) =>
+            {
+                _clickTimer?.Stop();
+                _clickAction = null;
+            };
+        }
+        _clickTimer.Stop();
+        _clickTimer.Interval = TimeSpan.FromMilliseconds(Math.Max(1000, timeoutMs) + 500);
+        _clickTimer.Start();
         _tray?.ShowBalloonTip(timeoutMs, title, text, icon);
     }
 
@@ -77,8 +91,16 @@ public sealed class TrayManager : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _tray?.Dispose();
-        _tray = null;
+        try { _clickTimer?.Stop(); } catch { }
+        _clickTimer = null;
+        _clickAction = null;
+        if (_tray is not null)
+        {
+            // 先に非表示にしないとアイコンが残ることがある
+            try { _tray.Visible = false; } catch { }
+            _tray.Dispose();
+            _tray = null;
+        }
         _icon?.Dispose();
         _icon = null;
     }

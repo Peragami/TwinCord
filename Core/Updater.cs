@@ -13,8 +13,22 @@ public record UpdateInfo(string Tag, string Version, string Notes, string AssetU
 /// </summary>
 public static class Updater
 {
-    public const string RepoLatestUrl = "https://api.github.com/repos/Peragami/TwinCord/releases/latest";
+    private const string Repo = "Peragami/TwinCord";
+    public const string RepoLatestUrl = "https://api.github.com/repos/" + Repo + "/releases/latest";
     public const string AssetName = "TwinCord.exe";
+
+    /// <summary>
+    /// 配布ファイルの取得先として妥当か。APIの応答が差し替わっても任意ホストから
+    /// exeを落として実行しないよう、GitHubの当該リポジトリに限定する。
+    /// (リリース自体が乗っ取られた場合までは防げないため、SHA256と併せた多層防御)
+    /// </summary>
+    public static bool IsTrustedAssetUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return false;
+        if (u.Scheme != Uri.UriSchemeHttps) return false;
+        if (!u.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)) return false;
+        return u.AbsolutePath.StartsWith("/" + Repo + "/releases/download/", StringComparison.OrdinalIgnoreCase);
+    }
 
 #if SELF_CONTAINED_BUILD
     public static bool IsSelfContainedBuild => true;
@@ -48,6 +62,13 @@ public static class Updater
                     sha256 = digest.Substring(7);
                 break;
             }
+        }
+        if (!IsTrustedAssetUrl(assetUrl))
+        {
+            if (!string.IsNullOrEmpty(assetUrl))
+                Diagnostics.Log("更新: 配布ファイルの取得先が想定外のため無視: " + assetUrl);
+            assetUrl = "";
+            sha256 = "";
         }
         return new UpdateInfo(tag, latest, notes, assetUrl, sha256);
     }
