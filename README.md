@@ -28,6 +28,13 @@ Discord公式Web版を2枚埋め込み、1プロセスで2アカウントを同�
 - Windows 10 / 11 (WebView2 ランタイム標準搭載)
 - .NET 10 SDK (ビルド時) / .NET 10 ランタイム (フレームワーク依存版の実行時)
 
+## 入手
+
+[Releases](https://github.com/Peragami/TwinCord/releases) からダウンロードしてください。
+
+- `TwinCord.exe` … 通常版(.NET 10 ランタイムが必要)。**アプリ内の自動更新の対象**
+- `TwinCord-selfcontained.exe` … ランタイム同梱版(.NET不要)。更新は手動で置き換え
+
 ## ビルド
 
 ```powershell
@@ -48,6 +55,13 @@ scripts\publish-selfcontained.bat   :: ランタイム同梱の単一exe (publis
 - `publish-selfcontained.bat` の成果物は.NET不要で動きますが、**自動更新の対象外**です。
   更新は新しいexeをダウンロードして置き換えてください(アプリの更新通知にもその旨が出ます)。
 - どちらのスクリプトも失敗時は終了コード1を返し、古いexeを残したまま成功扱いにはなりません。
+
+リリースには2つを添付します(`TwinCord.exe` が自動更新の対象、もう一方は手動更新用):
+
+| 添付ファイル | 元 | 想定 |
+|---|---|---|
+| `TwinCord.exe` | `publish\TwinCord.exe` | 通常版。自動更新で配信される |
+| `TwinCord-selfcontained.exe` | `publish-selfcontained\TwinCord.exe` | .NET不要版。手動で置き換える |
 
 ## 注意(アカウント安全性について)
 
@@ -80,6 +94,7 @@ scripts\publish-selfcontained.bat   :: ランタイム同梱の単一exe (publis
 
 ## バージョン履歴
 
+- 1.9.1 レビュー指摘の一括修正(設定保存・例外処理・更新の検証・通知まわり)、自己完結版を約79MBに圧縮
 - 1.9.0 起動時更新確認・ワンクリック更新、通知設定ほか
 - 1.8.2 非表示側の早期メモリ抑制ほか
 - 1.8.1 通知履歴の閉じるボタン修正
