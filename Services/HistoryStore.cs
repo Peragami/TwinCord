@@ -10,6 +10,10 @@ public sealed class HistoryStore
 {
     private readonly List<NotificationRecord> _items = new();
     private const int MaxItems = 30;
+    private readonly string _folder;
+
+    /// <summary>folderを省略すると通常のデータフォルダを使う(テストでは一時フォルダを渡せる)。</summary>
+    public HistoryStore(string? folder = null) => _folder = folder ?? AppSettings.DataFolder();
 
     public IReadOnlyList<NotificationRecord> Items => _items;
 
@@ -52,7 +56,7 @@ public sealed class HistoryStore
         var tmp = path + ".tmp";
         try
         {
-            Directory.CreateDirectory(AppSettings.DataFolder());
+            Directory.CreateDirectory(_folder);
             // 直接上書きせず、書けたら置換する(途中で落ちても履歴が壊れない)
             File.WriteAllText(tmp, JsonSerializer.Serialize(_items.Take(MaxItems).ToList()));
             File.Move(tmp, path, true);
@@ -63,6 +67,6 @@ public sealed class HistoryStore
         }
     }
 
-    private static string FilePath() => System.IO.Path.Combine(
-        AppSettings.DataFolder(), AppConstants.HistoryFileName);
+    private string FilePath() => Path.Combine(
+        _folder, AppConstants.HistoryFileName);
 }

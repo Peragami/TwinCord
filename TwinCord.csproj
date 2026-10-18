@@ -29,4 +29,10 @@
     <EmbeddedResource Include="README.md" LogicalName="TwinCord.README.md" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- テストプロジェクトはアプリの既定Compile/Noneに含めない -->
+    <Compile Remove="TwinCord.Tests\**\*.cs" />
+    <None Remove="TwinCord.Tests\**\*" />
+  </ItemGroup>
+
 </Project>
