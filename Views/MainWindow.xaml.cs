@@ -40,7 +40,17 @@ public partial class MainWindow : Window
     // Discordのデスクトップ通知を横取りしてホストに転送するJS(DM・メンション等すべて、トップフレームのみ)
     // 本物のNotificationは作らない(二重通知防止のためダミーを返す)
     private const string NotifyScript =
-        "(function(){try{if(window.top!==window)return;var stub={close:function(){},addEventListener:function(){},removeEventListener:function(){}};function Hooked(t,o){try{chrome.webview.postMessage('notify:'+JSON.stringify({title:t||'',body:(o&&o.body)||''}));}catch(e){}return stub;}Hooked.permission='granted';Hooked.requestPermission=function(){return Promise.resolve('granted');};window.Notification=Hooked;}catch(e){}})();";
+        "(function(){try{if(window.top!==window)return;window.__tcNotifyHook=1;"
+        + "function send(t,o){try{chrome.webview.postMessage('notify:'+JSON.stringify({title:t||'',body:(o&&o.body)||''}));}catch(e){}}"
+        + "try{var oq=navigator.permissions.query.bind(navigator.permissions);"
+        + "navigator.permissions.query=function(d){if(d&&d.name==='notifications')return Promise.resolve({state:'granted',name:'notifications',onchange:null,addEventListener:function(){},removeEventListener:function(){}});return oq(d);};}catch(e){}"
+        + "var stub={close:function(){},addEventListener:function(){},removeEventListener:function(){}};"
+        + "function Hooked(t,o){send(t,o);return stub;}"
+        + "Hooked.permission='granted';Hooked.requestPermission=function(){return Promise.resolve('granted');};"
+        + "window.Notification=Hooked;"
+        + "try{var P=window.ServiceWorkerRegistration&&ServiceWorkerRegistration.prototype;"
+        + "if(P&&P.showNotification){var orig=P.showNotification;P.showNotification=function(t,o){send(t,o);return orig.apply(this,arguments);};}}catch(e){}"
+        + "}catch(e){}})();";
 
     // サーバーリストの「アプリをダウンロード」ボタンを隠すJS(ベストエフォート)
     // 実体はdiv系要素のため、短文テキスト一致＋属性判定で探す(祖先巻き込み防止に文字数制限)
@@ -331,9 +341,58 @@ public partial class MainWindow : Window
         }
         try
         {
-            await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(NotifyScript);
+            var scriptId = await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(NotifyScript);
+            Diagnostics.Log($"通知スクリプト登録(acc{n}): {scriptId}");
         }
-        catch { }
+        catch (Exception ex) { Diagnostics.Log($"通知スクリプト登録失敗(acc{n}): {ex.Message}"); }
+        // 通知の受け取り経路を記録(原因調査用)
+        try
+        {
+            bool logged = false;
+            view.CoreWebView2.NavigationCompleted += async (_, __) =>
+            {
+                if (logged) return;
+                logged = true;
+                try
+                {
+                    var r = await view.CoreWebView2.ExecuteScriptAsync(
+                        "(function(){try{var p=(typeof Notification!=='undefined')?Notification.permission:'none';"
+                        + "return JSON.stringify({hook:!!window.__tcNotifyHook,perm:p});}catch(e){return 'ERR';}})()");
+                    Diagnostics.Log($"通知診断(acc{n}): {r}");
+                }
+                catch (Exception ex) { Diagnostics.Log($"通知診断(acc{n}) 失敗: {ex.Message}"); }
+            };
+            view.CoreWebView2.NotificationReceived += (_, e) =>
+            {
+                try
+                {
+                    // 念のため: JSフックを通らない通知もTwinCordのバルーンで出す
+                    if (!(e.SenderOrigin ?? "").Contains("discord.com", StringComparison.OrdinalIgnoreCase)) return;
+                    var title = e.Notification.Title ?? "";
+                    var body = e.Notification.Body ?? "";
+                    e.Handled = true;
+                    try { e.Notification.ReportShown(); } catch { }
+                    Diagnostics.Log($"通知ネイティブ(acc{n}): {title} / {body}");
+                    HandlePageNotify(view, JsonSerializer.Serialize(new { title, body }));
+                }
+                catch (Exception ex) { Diagnostics.Log($"通知ネイティブ処理失敗(acc{n}): {ex.Message}"); }
+            };
+            view.CoreWebView2.PermissionRequested += (_, e) =>
+            {
+                try
+                {
+                    Diagnostics.Log($"権限要求(acc{n}): {e.PermissionKind} {e.Uri}");
+                    if (e.PermissionKind == CoreWebView2PermissionKind.Notifications
+                        && (e.Uri ?? "").Contains("discord.com", StringComparison.OrdinalIgnoreCase))
+                    {
+                        e.State = CoreWebView2PermissionState.Allow;
+                        e.Handled = true;
+                    }
+                }
+                catch { }
+            };
+        }
+        catch (Exception ex) { Diagnostics.Log($"通知フック設定失敗(acc{n}): {ex.Message}"); }
         if (_settings.HideDownloadButton)
         {
             try
@@ -371,7 +430,11 @@ public partial class MainWindow : Window
         // Sourceが空の場合はWebView2側がURIを特定できていないだけなので通す(通知が止まる方が害が大きい)
         var source = e.Source;
         if (!string.IsNullOrEmpty(source)
-            && !source.Contains("discord.com", StringComparison.OrdinalIgnoreCase)) return;
+            && !source.Contains("discord.com", StringComparison.OrdinalIgnoreCase))
+        {
+            Diagnostics.Log($"Webメッセージ破棄: source={source}");
+            return;
+        }
         var msg = e.TryGetWebMessageAsString();
         if (msg == "switch:1") SwitchTo(1);
         else if (msg == "switch:2") SwitchTo(2);
@@ -383,13 +446,13 @@ public partial class MainWindow : Window
     {
         int n = ReferenceEquals(sender, View2) ? 2 : 1;
         // マスターOFFでは記録も通知もしない
-        if (!_settings.NotifyEnabled) return;
+        if (!_settings.NotifyEnabled) { Diagnostics.Log($"通知抑制(acc{n}): 通知OFF"); return; }
         // 前面で操作中のときだけ「表示中」とみなす(背面にあるだけでは通知を抑えない)
         bool focused = IsVisible && WindowState != WindowState.Minimized && IsActive;
         // 格納中のみ通知する設定なら、表示中はすべて出さない
-        if (focused && _settings.NotifyHiddenOnly) return;
+        if (focused && _settings.NotifyHiddenOnly) { Diagnostics.Log($"通知抑制(acc{n}): 表示中は出さない設定"); return; }
         // 見ている最中のアカウントは通知不要(設定で変更可)
-        if (focused && _current == n && _settings.SkipViewedAccount) return;
+        if (focused && _current == n && _settings.SkipViewedAccount) { Diagnostics.Log($"通知抑制(acc{n}): 表示中のアカウント"); return; }
         var acc = AccName(n);
         string title = acc, body = "";
         try
