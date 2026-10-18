@@ -132,6 +132,32 @@ public class AppSettings
 
     public AppSettings Clone() => (AppSettings)MemberwiseClone();
 
+    /// <summary>別インスタンスの内容を丸ごとコピーする(インポート後に設定画面の編集用コピーを同期するため)。</summary>
+    public void CopyFrom(AppSettings other)
+    {
+        StartWithWindows = other.StartWithWindows;
+        MinimizeToTray = other.MinimizeToTray;
+        UnreadBadge = other.UnreadBadge;
+        AutoReload = other.AutoReload;
+        CountUnreadChannels = other.CountUnreadChannels;
+        StartMinimized = other.StartMinimized;
+        AutoUpdateCheck = other.AutoUpdateCheck;
+        NotifyEnabled = other.NotifyEnabled;
+        SkipViewedAccount = other.SkipViewedAccount;
+        NotifyHiddenOnly = other.NotifyHiddenOnly;
+        HideDownloadButton = other.HideDownloadButton;
+        Acc1Name = other.Acc1Name;
+        Acc2Name = other.Acc2Name;
+        NamesMigrated = other.NamesMigrated;
+        Zoom1 = other.Zoom1;
+        Zoom2 = other.Zoom2;
+        WinLeft = other.WinLeft;
+        WinTop = other.WinTop;
+        WinWidth = other.WinWidth;
+        WinHeight = other.WinHeight;
+        WinMaximized = other.WinMaximized;
+    }
+
     public static double ClampZoom(double v) =>
         double.IsNaN(v) || double.IsInfinity(v) ? 1.0
         : v < 0.5 ? 0.5

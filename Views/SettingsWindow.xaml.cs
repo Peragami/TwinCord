@@ -21,7 +21,10 @@ public partial class SettingsWindow : Window
         Loaded += SettingsWindow_Loaded;
     }
 
-    private void SettingsWindow_Loaded(object sender, RoutedEventArgs e)
+    private void SettingsWindow_Loaded(object sender, RoutedEventArgs e) => ApplyToUi();
+
+    /// <summary>設定値(編集用コピー)を画面へ反映する。</summary>
+    private void ApplyToUi()
     {
         StartBox.IsChecked = _settings.StartWithWindows;
         TrayBox.IsChecked = _settings.MinimizeToTray;
@@ -54,6 +57,16 @@ public partial class SettingsWindow : Window
         {
             RuntimeText.Text = "不明";
         }
+    }
+
+    /// <summary>
+    /// インポート後の内容を編集用コピーと画面へ反映する。
+    /// これをしないと、インポート後にOKを押したとき draft(インポート前)で上書きされてしまう。
+    /// </summary>
+    public void ReloadFrom(AppSettings settings)
+    {
+        _settings.CopyFrom(settings);
+        ApplyToUi();
     }
 
     private void ZoomSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
