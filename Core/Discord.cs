@@ -12,6 +12,8 @@ public static class Discord
     public static bool IsDiscordUri(string? uri)
     {
         if (!Uri.TryCreate(uri, UriKind.Absolute, out var u)) return false;
+        // file: や独自スキームでホスト名だけ discord.com に見せるURLを許さない
+        if (u.Scheme != Uri.UriSchemeHttps) return false;
         return u.Host.Equals(Host, StringComparison.OrdinalIgnoreCase)
             || u.Host.EndsWith("." + Host, StringComparison.OrdinalIgnoreCase);
     }
