@@ -25,7 +25,21 @@ public partial class HistoryWindow : Window
             return;
         }
         foreach (var it in _items)
-            HistoryList.Items.Add($"{it.Time:HH:mm} [{it.AccountName}] {it.Text.ReplaceLineEndings(" ")}");
+        {
+            // 古い履歴ファイルのnull要素・null文字列でも落ちないようにする
+            if (it is null)
+            {
+                HistoryList.Items.Add("(不明な通知)");
+                continue;
+            }
+            var stamp = it.Time.Date == DateTime.Today
+                ? it.Time.ToString("HH:mm")
+                : it.Time.Year == DateTime.Today.Year
+                    ? it.Time.ToString("MM/dd HH:mm")
+                    : it.Time.ToString("yyyy/MM/dd HH:mm");
+            var name = string.IsNullOrWhiteSpace(it.AccountName) ? $"Acc{it.Account}" : it.AccountName;
+            HistoryList.Items.Add($"{stamp} [{name}] {(it.Text ?? "").ReplaceLineEndings(" ")}");
+        }
     }
 
     private void HistoryList_DoubleClick(object sender, MouseButtonEventArgs e)

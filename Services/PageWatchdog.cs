@@ -1,4 +1,5 @@
 using System.IO;
+using System.Net.Http;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -149,22 +150,90 @@ public sealed class PageWatchdog
             if (raw is null) return;
             var url = raw.Trim('"');
             if (string.IsNullOrEmpty(url)) return;
-            if (n == 1)
+
+            // ページDOM由来のURLをそのまま取得しない。
+            // DiscordのCDNだけを許可し、ローカルファイルや任意ホストへの誘導を防ぐ。
+            if (!IsTrustedAvatarUrl(url))
             {
-                if (url == _avatarUrl1) return;
+                Diagnostics.Log($"アバターURLを拒否(acc{n}): {url}");
+                return;
             }
-            else
-            {
-                if (url == _avatarUrl2) return;
-            }
-            var bytes = await Http.Shared.GetByteArrayAsync(url);
+
             var path = AvatarPath(n);
+            bool same = n == 1 ? url == _avatarUrl1 : url == _avatarUrl2;
+            if (same && File.Exists(path)) return;
+
+            var bytes = await DownloadAvatarAsync(url);
+            if (bytes is null || bytes.Length == 0) return;
+
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            await File.WriteAllBytesAsync(path, bytes);
+            // 直接上書きせず一時ファイル経由にする(書き込み途中の画像でアイコンが壊れない)
+            var tmp = path + ".tmp";
+            try
+            {
+                await File.WriteAllBytesAsync(tmp, bytes);
+
+                // 画像としてデコードできることを確認してから置換する
+                var probe = new BitmapImage();
+                probe.BeginInit();
+                probe.CacheOption = BitmapCacheOption.OnLoad;
+                probe.UriSource = new Uri(tmp, UriKind.Absolute);
+                probe.DecodePixelWidth = 96;
+                probe.EndInit();
+                probe.Freeze();
+
+                File.Move(tmp, path, true);
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"アバター保存失敗(acc{n}): {ex.Message}");
+                try { File.Delete(tmp); } catch { }
+                return;
+            }
+
             if (n == 1) _avatarUrl1 = url; else _avatarUrl2 = url;
             SetAccountIcon(n);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Diagnostics.Log($"アバター更新失敗(acc{n}): {ex.Message}");
+        }
+    }
+
+    /// <summary>Discordの画像CDN(https・既定ポート)だけを許可する。</summary>
+    private static bool IsTrustedAvatarUrl(string raw)
+    {
+        if (!Uri.TryCreate(raw, UriKind.Absolute, out var u)) return false;
+        if (u.Scheme != Uri.UriSchemeHttps || !u.IsDefaultPort) return false;
+        if (!string.IsNullOrEmpty(u.UserInfo)) return false;
+
+        var host = u.Host;
+        return host.Equals("discord.com", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".discord.com", StringComparison.OrdinalIgnoreCase)
+            || host.Equals("discordapp.com", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".discordapp.com", StringComparison.OrdinalIgnoreCase)
+            || host.Equals("discordapp.net", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".discordapp.net", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>上限付きで画像を取得する。Content-Lengthが信用できない場合も読みながら打ち切る。</summary>
+    private static async Task<byte[]?> DownloadAvatarAsync(string url)
+    {
+        using var cts = new CancellationTokenSource(AppConstants.HttpTimeout);
+        using var res = await Http.Shared.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+        res.EnsureSuccessStatusCode();
+        if (res.Content.Headers.ContentLength is > AppConstants.AvatarMaxBytes) return null;
+
+        await using var stream = await res.Content.ReadAsStreamAsync(cts.Token);
+        using var ms = new MemoryStream();
+        var buf = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(buf.AsMemory(), cts.Token)) > 0)
+        {
+            if (ms.Length + read > AppConstants.AvatarMaxBytes) return null;
+            ms.Write(buf, 0, read);
+        }
+        return ms.ToArray();
     }
 
     // アバター画像はデコード済みのBitmapSourceを使い回す(毎回のデコードを避ける)

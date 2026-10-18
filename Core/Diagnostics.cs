@@ -13,9 +13,10 @@ public class Diagnostics
     private readonly Dictionary<Feature, int> _failures = new();
     private readonly Dictionary<Feature, int> _thresholds = new()
     {
-        [Feature.Badge] = 6,   // 5秒間隔 x6 = 約30秒応答なしで劣化判定
-        [Feature.Hotkey] = 1,  // 注入失敗は即劣化
-        [Feature.Page] = 3,    // 死活3連続失敗で劣化判定
+        [Feature.Badge] = 6,        // 5秒間隔 x6 = 約30秒応答なしで劣化判定
+        [Feature.HotkeyGlobal] = 1, // 登録失敗は即劣化
+        [Feature.HotkeyPage] = 1,   // 注入失敗は即劣化
+        [Feature.Page] = 3,         // 死活3連続失敗で劣化判定
     };
     private readonly HashSet<Feature> _notified = new();
 
@@ -25,7 +26,8 @@ public class Diagnostics
     public static string DisplayName(Feature key) => key switch
     {
         Feature.Badge => "未読バッジ",
-        Feature.Hotkey => "切替キー(Ctrl+1/2)",
+        Feature.HotkeyGlobal => "グローバル切替キー(Ctrl+Alt+1/2/M)",
+        Feature.HotkeyPage => "ページ内切替キー(Ctrl+1/2)",
         Feature.Page => "ページ死活監視",
         _ => key.ToString(),
     };
@@ -83,31 +85,38 @@ public class Diagnostics
         }
     }
 
+    // WebView2イベント・タイマー・未処理例外など複数スレッドから呼ばれる。
+    // AppendAllTextは共有違反で失敗し得るため、ローテーションごと直列化する。
+    private static readonly object LogLock = new();
+
     public static void Log(string msg)
     {
-        try
+        lock (LogLock)
         {
-            var dir = AppSettings.DataFolder();
-            Directory.CreateDirectory(dir);
-            var path = Path.Combine(dir, AppConstants.LogBaseName + ".log");
-            var fi = new FileInfo(path);
-            if (fi.Exists && fi.Length > 256 * 1024)
+            try
             {
-                for (int i = 2; i >= 0; i--)
+                var dir = AppSettings.DataFolder();
+                Directory.CreateDirectory(dir);
+                var path = Path.Combine(dir, AppConstants.LogBaseName + ".log");
+                var fi = new FileInfo(path);
+                if (fi.Exists && fi.Length > 256 * 1024)
                 {
-                    var src = i == 0 ? path : Path.Combine(dir, $"{AppConstants.LogBaseName}.{i}.log");
-                    var dst = Path.Combine(dir, $"{AppConstants.LogBaseName}.{i + 1}.log");
-                    if (File.Exists(src))
+                    for (int i = 2; i >= 0; i--)
                     {
-                        if (File.Exists(dst)) File.Delete(dst);
-                        File.Move(src, dst);
+                        var src = i == 0 ? path : Path.Combine(dir, $"{AppConstants.LogBaseName}.{i}.log");
+                        var dst = Path.Combine(dir, $"{AppConstants.LogBaseName}.{i + 1}.log");
+                        if (File.Exists(src))
+                        {
+                            if (File.Exists(dst)) File.Delete(dst);
+                            File.Move(src, dst);
+                        }
                     }
                 }
+                if (!File.Exists(path) || new FileInfo(path).Length == 0)
+                    File.WriteAllText(path, "", new UTF8Encoding(true)); // 先頭にBOM
+                File.AppendAllText(path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {msg}{Environment.NewLine}", new UTF8Encoding(false));
             }
-            if (!File.Exists(path) || new FileInfo(path).Length == 0)
-                File.WriteAllText(path, "", new UTF8Encoding(true)); // 先頭にBOM
-            File.AppendAllText(path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {msg}{Environment.NewLine}", new UTF8Encoding(false));
+            catch { }
         }
-        catch { }
     }
 }

@@ -4,6 +4,9 @@ namespace TwinCord;
 public enum Feature
 {
     Badge,
-    Hotkey,
+    /// <summary>グローバルホットキー(Ctrl+Alt+1/2/M)の登録。</summary>
+    HotkeyGlobal,
+    /// <summary>Discordページ内Ctrl+1/2を拾う注入スクリプト。</summary>
+    HotkeyPage,
     Page,
 }

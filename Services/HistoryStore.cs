@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 
 namespace TwinCord.Services;
 
@@ -25,21 +26,41 @@ public sealed class HistoryStore
         {
             var p = FilePath();
             if (!File.Exists(p)) return;
-            var list = System.Text.Json.JsonSerializer.Deserialize<List<NotificationRecord>>(File.ReadAllText(p));
+            // 旧バージョンや手編集でnull要素・null文字列が入っていても表示側で落ちないようにする
+            var list = JsonSerializer.Deserialize<List<NotificationRecord?>>(File.ReadAllText(p));
             if (list is null) return;
-            _items.AddRange(list.Take(MaxItems));
+            _items.Clear();
+            foreach (var item in list)
+            {
+                if (item is null) continue;
+                _items.Add(item with
+                {
+                    AccountName = string.IsNullOrWhiteSpace(item.AccountName)
+                        ? $"Acc{item.Account}"
+                        : item.AccountName,
+                    Text = item.Text ?? "",
+                });
+                if (_items.Count >= MaxItems) break;
+            }
         }
         catch { }
     }
 
     private void Save()
     {
+        var path = FilePath();
+        var tmp = path + ".tmp";
         try
         {
-            System.IO.Directory.CreateDirectory(AppSettings.DataFolder());
-            File.WriteAllText(FilePath(), System.Text.Json.JsonSerializer.Serialize(_items.Take(MaxItems).ToList()));
+            Directory.CreateDirectory(AppSettings.DataFolder());
+            // 直接上書きせず、書けたら置換する(途中で落ちても履歴が壊れない)
+            File.WriteAllText(tmp, JsonSerializer.Serialize(_items.Take(MaxItems).ToList()));
+            File.Move(tmp, path, true);
         }
-        catch { }
+        catch
+        {
+            try { File.Delete(tmp); } catch { }
+        }
     }
 
     private static string FilePath() => System.IO.Path.Combine(

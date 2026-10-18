@@ -9,7 +9,8 @@ public partial class SettingsWindow : Window
 
     public Func<Task<string>>? Diagnose { get; set; }
     public Func<Task<string>>? CheckUpdate { get; set; }
-    public Func<string?>? ExportRequested { get; set; }
+    // エクスポートは画面の編集内容(draft)を渡す。確定前の変更もバックアップできる。
+    public Func<AppSettings, string?>? ExportRequested { get; set; }
     public Func<string?>? ImportRequested { get; set; }
     public Action? TestNotifyRequested { get; set; }
 
@@ -135,7 +136,7 @@ public partial class SettingsWindow : Window
 
     private void ExportButton_Click(object sender, RoutedEventArgs e)
     {
-        TransferResult.Text = ExportRequested is null ? "利用できません。" : (ExportRequested() ?? "");
+        TransferResult.Text = ExportRequested is null ? "利用できません。" : (ExportRequested(_settings) ?? "");
     }
 
     private void ImportButton_Click(object sender, RoutedEventArgs e)
