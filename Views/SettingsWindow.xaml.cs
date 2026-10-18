@@ -29,6 +29,7 @@ public partial class SettingsWindow : Window
         BadgeBox.IsChecked = _settings.UnreadBadge;
         UnreadBox.IsChecked = _settings.CountUnreadChannels;
         ReloadBox.IsChecked = _settings.AutoReload;
+        MemorySavingBox.IsChecked = _settings.MemorySavingMode;
         UpdateCheckBox.IsChecked = _settings.AutoUpdateCheck;
         NotifyBox.IsChecked = _settings.NotifyEnabled;
         SkipViewedBox.IsChecked = _settings.SkipViewedAccount;
@@ -76,6 +77,7 @@ public partial class SettingsWindow : Window
         _settings.UnreadBadge = BadgeBox.IsChecked == true;
         _settings.CountUnreadChannels = UnreadBox.IsChecked == true;
         _settings.AutoReload = ReloadBox.IsChecked == true;
+        _settings.MemorySavingMode = MemorySavingBox.IsChecked == true;
         _settings.AutoUpdateCheck = UpdateCheckBox.IsChecked == true;
         _settings.NotifyEnabled = NotifyBox.IsChecked == true;
         _settings.SkipViewedAccount = SkipViewedBox.IsChecked == true;

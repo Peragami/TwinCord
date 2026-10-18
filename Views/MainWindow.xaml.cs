@@ -57,6 +57,9 @@ public partial class MainWindow : Window
     private Task? _initTask2;
     private CoreWebView2Environment? _env1;
     private CoreWebView2Environment? _env2;
+    // メモリ節約モード用: 2アカウントで共有する環境(1つだけ作る)
+    private CoreWebView2Environment? _sharedEnv;
+    private Task<CoreWebView2Environment>? _sharedEnvTask;
 
     private readonly TrayManager _tray = new();
     private readonly HistoryStore _history = new();
@@ -266,11 +269,52 @@ public partial class MainWindow : Window
 
     private async Task InitViewAsync(int n, Microsoft.Web.WebView2.Wpf.WebView2 view, string folder, double zoom)
     {
-        var userDataFolder = Path.Combine(AppSettings.DataFolder(), folder);
-        Directory.CreateDirectory(userDataFolder);
-        var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-        if (n == 1) _env1 = env; else _env2 = env;
-        await view.EnsureCoreWebView2Async(env);
+        // メモリ節約モード: 1つの環境(ブラウザ/GPUプロセスを共有)に、アカウント別プロファイルを載せる。
+        // クッキー/localStorageはプロファイルごとに分離されるため、ログインも通知も両方そのまま動く。
+        CoreWebView2Environment env;
+        if (_settings.MemorySavingMode)
+        {
+            env = await GetSharedEnvironmentAsync();
+            if (n == 1) _env1 = env; else _env2 = env;
+            var options = env.CreateCoreWebView2ControllerOptions();
+            options.ProfileName = ProfileName(n);
+            await view.EnsureCoreWebView2Async(env, options);
+        }
+        else
+        {
+            env = await CoreWebView2Environment.CreateAsync(null, EnsureDataFolder(folder));
+            if (n == 1) _env1 = env; else _env2 = env;
+            await view.EnsureCoreWebView2Async(env);
+        }
+        await ConfigureViewAsync(n, view, zoom);
+    }
+
+    private static string EnsureDataFolder(string name)
+    {
+        var dir = Path.Combine(AppSettings.DataFolder(), name);
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    /// <summary>共有環境は1つだけ作る(2つのViewから呼ばれても二重生成しない)。</summary>
+    private Task<CoreWebView2Environment> GetSharedEnvironmentAsync()
+    {
+        _sharedEnvTask ??= CreateSharedEnvironmentAsync();
+        return _sharedEnvTask;
+    }
+
+    private async Task<CoreWebView2Environment> CreateSharedEnvironmentAsync()
+    {
+        var env = await CoreWebView2Environment.CreateAsync(null, EnsureDataFolder("webview2"));
+        _sharedEnv = env;
+        return env;
+    }
+
+    private static string ProfileName(int n) => "acc" + n;
+
+    /// <summary>環境の作り方(アカウント別/共有)によらず共通の初期化。</summary>
+    private async Task ConfigureViewAsync(int n, Microsoft.Web.WebView2.Wpf.WebView2 view, double zoom)
+    {
         // 読み込み中から非表示側は絞っておく(起動ピークの抑制。表示切替時にRefreshされる)
         PageWatchdog.SetMemoryLevel(view, n != _current);
         // リンクホバー時の左下URLプレビュー(ステータスバー)を出さない
@@ -520,9 +564,16 @@ public partial class MainWindow : Window
         {
             if (w.ShowDialog() == true)
             {
+                // 環境の共有方法は起動時に決まるため、変更は次回起動から
+                bool modeChanged = _settings.MemorySavingMode != draft.MemorySavingMode;
                 _settings = draft;
                 _settings.Save();
                 ApplySettings();
+                if (modeChanged)
+                    System.Windows.MessageBox.Show(
+                        "メモリ節約モードの変更は次回の起動から反映されます。\n" +
+                        "初回はクッキーなどが引き継がれず、両アカウントで再ログインが必要になる場合があります。",
+                        "TwinCord", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
         finally
@@ -843,6 +894,7 @@ public partial class MainWindow : Window
             sb.AppendLine($"プロセス全体: {mb}MB");
         }
         catch { }
+        sb.AppendLine($"メモリ節約モード: {(_sharedEnv is not null ? "ON(2アカウントで共有)" : "OFF(アカウント別)")}");
         try
         {
             sb.AppendLine("WebView2: " + CoreWebView2Environment.GetAvailableBrowserVersionString());
@@ -890,10 +942,18 @@ public partial class MainWindow : Window
                     int cnt = 0;
                     foreach (var p in env.GetProcessInfos())
                     {
-                        try { bytes += Process.GetProcessById(p.ProcessId).PrivateMemorySize64; cnt++; }
+                        try
+                        {
+                            using var proc = Process.GetProcessById(p.ProcessId);
+                            bytes += proc.PrivateMemorySize64;
+                            cnt++;
+                        }
                         catch { }
                     }
-                    mem = $"{bytes / 1024 / 1024}MB({cnt}プロセス)";
+                    // 共有環境ではプロセスが共通なので、同じ数字を2回出さない
+                    mem = _sharedEnv is not null
+                        ? (accNo == 1 ? $"{bytes / 1024 / 1024}MB(2アカウント合算)" : "同上(合算)")
+                        : $"{bytes / 1024 / 1024}MB({cnt}プロセス)";
                 }
             }
             catch
