@@ -62,12 +62,14 @@ public class UpdaterTests
     {
         var json = BuildReleaseJson("https://evil.example/TwinCord.exe", digest: "sha256:ABC123");
         using var http = new HttpClient(new StubHttpMessageHandler(json));
+        var logs = new List<string>();
 
-        var info = await Updater.FetchLatestAsync(http);
+        var info = await Updater.FetchLatestAsync(http, log: logs.Add);
 
         Assert.NotNull(info);
         Assert.Equal("", info!.AssetUrl);
         Assert.Equal("", info.Sha256);
+        Assert.Contains(logs, m => m.Contains("evil.example", StringComparison.Ordinal));
     }
 
     [Fact]
