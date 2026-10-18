@@ -11,11 +11,6 @@ public class AppSettings
     public bool MinimizeToTray { get; set; } = true;
     public bool UnreadBadge { get; set; } = true;
     public bool AutoReload { get; set; } = true;
-    /// <summary>
-    /// 2アカウントで1つのWebView2環境(ブラウザ/GPUプロセス)を共有し、プロファイルだけを分ける。
-    /// 環境の作り方は起動時に決まるため、反映は次回起動から。
-    /// </summary>
-    public bool MemorySavingMode { get; set; }
     public bool CountUnreadChannels { get; set; }
     public bool StartMinimized { get; set; }
     public bool AutoUpdateCheck { get; set; } = true;

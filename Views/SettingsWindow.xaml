@@ -111,19 +111,6 @@
                         <CheckBox Grid.Column="1" x:Name="UpdateCheckBox" Style="{StaticResource DiscordToggle}" />
                     </Grid>
 
-                    <TextBlock Text="メモリ" Style="{StaticResource SectionHeader}" />
-                    <Grid Margin="0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <TextBlock Text="メモリ節約モード" Style="{StaticResource RowLabel}" />
-                            <TextBlock Text="2アカウントで1つのブラウザ/GPUを共有します(次回起動から)。初回は再ログインが必要になる場合があります" Style="{StaticResource RowHint}" TextWrapping="Wrap" />
-                        </StackPanel>
-                        <CheckBox Grid.Column="1" x:Name="MemorySavingBox" Style="{StaticResource DiscordToggle}" />
-                    </Grid>
-
                     <TextBlock Text="設定の持ち運び" Style="{StaticResource SectionHeader}" />
                     <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                         <Button x:Name="ExportButton" Content="エクスポート" Style="{StaticResource BtnSecondary}" Click="ExportButton_Click" />
