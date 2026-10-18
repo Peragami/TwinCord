@@ -190,6 +190,13 @@ public partial class MainWindow : Window
             _history.Load();
             ApplySettings();
             _watchdog?.Start();
+            // 「起動時に最小化」はUIの説明どおりトレイへ格納する
+            // (コンストラクタでWindowStateを設定した時点ではStateChanged未購読のためHideされない)
+            if (_settings.StartMinimized && IsVisible)
+            {
+                Hide();
+                _tray.Ensure();
+            }
             // 起動時から最小化/非表示なら、表示側もLowにしておく
             _watchdog?.SetWindowHidden(WindowState == WindowState.Minimized || !IsVisible);
             // 逐次起動(起動ピークを抑えつつ両方常駐)
@@ -365,7 +372,7 @@ public partial class MainWindow : Window
                 try
                 {
                     // 念のため: JSフックを通らない通知もTwinCordのバルーンで出す
-                    if (!(e.SenderOrigin ?? "").Contains("discord.com", StringComparison.OrdinalIgnoreCase)) return;
+                    if (!IsDiscordUri(e.SenderOrigin)) return;
                     var title = e.Notification.Title ?? "";
                     var body = e.Notification.Body ?? "";
                     e.Handled = true;
@@ -381,7 +388,7 @@ public partial class MainWindow : Window
                 {
                     Diagnostics.Log($"権限要求(acc{n}): {e.PermissionKind} {e.Uri}");
                     if (e.PermissionKind == CoreWebView2PermissionKind.Notifications
-                        && (e.Uri ?? "").Contains("discord.com", StringComparison.OrdinalIgnoreCase))
+                        && IsDiscordUri(e.Uri))
                     {
                         e.State = CoreWebView2PermissionState.Allow;
                         e.Handled = true;
@@ -411,7 +418,7 @@ public partial class MainWindow : Window
         view.CoreWebView2.NewWindowRequested += (_, e) =>
         {
             var uri = e.Uri ?? "";
-            if (uri.Contains("discord.com", StringComparison.OrdinalIgnoreCase)) return;
+            if (IsDiscordUri(uri)) return;
             e.Handled = true;
             if (string.IsNullOrEmpty(uri)) return;
             try { Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true }); }
@@ -427,8 +434,7 @@ public partial class MainWindow : Window
         // (iframeの自前スクリプトによる偽装を防ぐ。トップフレーム側のガードと併用)
         // Sourceが空の場合はWebView2側がURIを特定できていないだけなので通す(通知が止まる方が害が大きい)
         var source = e.Source;
-        if (!string.IsNullOrEmpty(source)
-            && !source.Contains("discord.com", StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrEmpty(source) && !IsDiscordUri(source))
         {
             Diagnostics.Log($"Webメッセージ破棄: source={source}");
             return;
@@ -438,6 +444,17 @@ public partial class MainWindow : Window
         else if (msg == "switch:2") SwitchTo(2);
         else if (msg is not null && msg.StartsWith("notify:", StringComparison.Ordinal))
             HandlePageNotify(sender, msg.Substring(7));
+    }
+
+    /// <summary>
+    /// Discordのオリジンか。ホスト名の完全一致(または .discord.com のサブドメイン)だけを許可する。
+    /// "discord.com.evil.example" のような部分一致での取りこぼしを防ぐ。
+    /// </summary>
+    private static bool IsDiscordUri(string? uri)
+    {
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var u)) return false;
+        return u.Host.Equals("discord.com", StringComparison.OrdinalIgnoreCase)
+            || u.Host.EndsWith(".discord.com", StringComparison.OrdinalIgnoreCase);
     }
 
     private void HandlePageNotify(object? sender, string json)
@@ -756,6 +773,7 @@ public partial class MainWindow : Window
             var r = doc.RootElement;
             if (!r.TryGetProperty("app", out var a) || a.GetString() != "TwinCord")
                 return "TwinCordの設定ファイルではありません。";
+            bool changed = false;
             if (r.TryGetProperty("settings", out var s))
             {
                 var ns = JsonSerializer.Deserialize<AppSettings>(s.GetRawText());
@@ -770,6 +788,7 @@ public partial class MainWindow : Window
                     ns.NamesMigrated = true; // 旧names.txtを後から読み直さない
                     _settings = ns;
                     _settings.Save();
+                    changed = true;
                 }
             }
             // 旧形式のバンドルに含まれる名前も受け付ける
@@ -781,6 +800,12 @@ public partial class MainWindow : Window
                 _settings.NamesMigrated = true;
                 _settings.Save();
                 SaveNames();
+                changed = true;
+            }
+            if (changed)
+            {
+                // 開いている設定画面の編集用コピーも更新する(OKでインポート内容が巻き戻るのを防ぐ)
+                _settingsWindow?.ReloadFrom(_settings);
             }
             RefreshRail();
             ApplySettings();

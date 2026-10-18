@@ -124,6 +124,8 @@ public static class Updater
 
     /// <summary>
     /// 自プロセス終了後に新exeへ差し替えて再起動するbatを投げて即戻る。呼び出し側で終了すること。
+    /// batにはASCIIしか書かず、パスは環境変数(Unicode)で渡す。batをUTF-8で書くとcmdが
+    /// OEMコードページで読むため、日本語を含むパスが化けてcopyに失敗する。
     /// </summary>
     public static void ApplyAndRestart(int currentPid, string newExe, string targetExe)
     {
@@ -132,25 +134,25 @@ public static class Updater
         File.WriteAllLines(bat, new[]
         {
             "@echo off",
-            $"set PID={currentPid}",
-            $"set DST={Quote(targetExe)}",
-            $"set SRC={Quote(newExe)}",
             ":wait",
-            "tasklist /FI \"PID eq %PID%\" 2>nul | find \"%PID%\" >nul",
+            "tasklist /FI \"PID eq %TC_PID%\" 2>nul | find \"%TC_PID%\" >nul",
             "if %ERRORLEVEL%==0 (timeout /t 1 /nobreak >nul & goto wait)",
-            "copy /Y %SRC% %DST% >nul",
-            "if %ERRORLEVEL% NEQ 0 (echo %DATE% %TIME% copy failed %SRC% to %DST%>> \"%~dp0update-error.log\" & start \"\" %DST% & del \"%~f0\" >nul 2>&1 & exit /b 1)",
-            "start \"\" %DST%",
-            "del %SRC% >nul 2>&1",
+            "copy /Y \"%TC_SRC%\" \"%TC_DST%\" >nul",
+            "if %ERRORLEVEL% NEQ 0 (echo %DATE% %TIME% copy failed \"%TC_SRC%\" to \"%TC_DST%\">> \"%~dp0update-error.log\" & start \"\" \"%TC_DST%\" & del \"%~f0\" >nul 2>&1 & exit /b 1)",
+            "start \"\" \"%TC_DST%\"",
+            "del \"%TC_SRC%\" >nul 2>&1",
             "del \"%~f0\" >nul 2>&1",
-        }, new UTF8Encoding(false));
-        Process.Start(new ProcessStartInfo
+        }, Encoding.ASCII);
+        var psi = new ProcessStartInfo
         {
             FileName = bat,
             CreateNoWindow = true,
             UseShellExecute = false,
-        });
+        };
+        // 値そのものはUnicodeで渡り、cmd側の展開もUnicodeなので文字コードの影響を受けない
+        psi.Environment["TC_PID"] = currentPid.ToString();
+        psi.Environment["TC_SRC"] = newExe;
+        psi.Environment["TC_DST"] = targetExe;
+        Process.Start(psi);
     }
-
-    private static string Quote(string path) => "\"" + path + "\"";
 }
