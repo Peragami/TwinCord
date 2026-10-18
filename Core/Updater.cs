@@ -30,8 +30,10 @@ public static class Updater
         return u.AbsolutePath.StartsWith("/" + Repo + "/releases/download/", StringComparison.OrdinalIgnoreCase);
     }
 
-    public static async Task<UpdateInfo?> FetchLatestAsync(HttpClient http, CancellationToken ct = default)
+    public static async Task<UpdateInfo?> FetchLatestAsync(
+        HttpClient http, CancellationToken ct = default, Action<string>? log = null)
     {
+        log ??= Diagnostics.Log;
         using var req = new HttpRequestMessage(HttpMethod.Get, RepoLatestUrl);
         req.Headers.UserAgent.ParseAdd("TwinCord");
         using var res = await http.SendAsync(req, ct);
@@ -60,7 +62,7 @@ public static class Updater
         if (!IsTrustedAssetUrl(assetUrl))
         {
             if (!string.IsNullOrEmpty(assetUrl))
-                Diagnostics.Log("更新: 配布ファイルの取得先が想定外のため無視: " + assetUrl);
+                log("更新: 配布ファイルの取得先が想定外のため無視: " + assetUrl);
             assetUrl = "";
             sha256 = "";
         }
