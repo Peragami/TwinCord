@@ -71,14 +71,15 @@ public static class PageScripts
             Hooked.requestPermission = function () { return Promise.resolve('granted'); };
             window.Notification = Hooked;
 
-            // ページからService Worker経由で出す通知も拾う
+            // ページからService Worker経由で出す通知も拾う。
+            // ここで本物のshowNotificationを呼ぶと、ネイティブ側のNotificationReceivedと
+            // 二重に表示されるため、ホストへ転送したら表示済みのPromiseを返す。
             try {
               var P = window.ServiceWorkerRegistration && ServiceWorkerRegistration.prototype;
               if (P && P.showNotification) {
-                var orig = P.showNotification;
                 P.showNotification = function (t, o) {
                   send(t, o);
-                  return orig.apply(this, arguments);
+                  return Promise.resolve();
                 };
               }
             } catch (e) { }

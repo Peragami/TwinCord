@@ -51,7 +51,7 @@ public partial class MainWindow : Window
     }
 
 
-    private string ExportBundle()
+    private string ExportBundle(AppSettings settings)
     {
         try
         {
@@ -65,8 +65,8 @@ public partial class MainWindow : Window
             {
                 app = "TwinCord",
                 version = 1,
-                settings = _settings,
-                names = new[] { _settings.Acc1Name, _settings.Acc2Name },
+                settings,
+                names = new[] { settings.Acc1Name, settings.Acc2Name },
             };
             File.WriteAllText(dlg.FileName,
                 JsonSerializer.Serialize(bundle, new JsonSerializerOptions { WriteIndented = true }));
@@ -120,11 +120,9 @@ public partial class MainWindow : Window
                 SaveNames();
                 changed = true;
             }
-            if (changed)
-            {
-                // 開いている設定画面の編集用コピーも更新する(OKでインポート内容が巻き戻るのを防ぐ)
-                _settingsWindow?.ReloadFrom(_settings);
-            }
+            if (!changed) return "インポートできる設定がありませんでした。";
+            // 開いている設定画面の編集用コピーも更新する(OKでインポート内容が巻き戻るのを防ぐ)
+            _settingsWindow?.ReloadFrom(_settings);
             RefreshRail();
             ApplySettings();
             return "インポートしました(再起動不要)。";

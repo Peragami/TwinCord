@@ -51,6 +51,7 @@ public partial class MainWindow : Window
     private HistoryWindow? _historyWindow;
     private UpdateDialog? _updateDialog;
     private bool _exiting;
+    private bool _closing;
 
     private static readonly System.Windows.Media.Brush SelectedBrush =
         new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#5865F2"));
@@ -136,7 +137,7 @@ public partial class MainWindow : Window
     private void ReportHotkeyFailure(string keys)
     {
         Diagnostics.Log($"グローバルホットキー登録失敗: {keys} (他アプリが使用中の可能性)");
-        _diag.ReportFail(Feature.Hotkey);
+        _diag.ReportFail(Feature.HotkeyGlobal);
     }
 
     private IntPtr WndProcHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -208,10 +209,12 @@ public partial class MainWindow : Window
 
     private void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
+        _closing = true;
         _placement?.Save();
         if (_settings.MinimizeToTray && !_exiting)
         {
             e.Cancel = true;
+            _closing = false;
             // トレイ格納中は表示側もLowに(通話中はPageWatchdog側で除外)
             _watchdog?.SetWindowHidden(true);
             TrimHostMemory();

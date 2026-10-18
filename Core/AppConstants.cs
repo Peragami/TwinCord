@@ -28,4 +28,7 @@ public static class AppConstants
     public static readonly TimeSpan HttpTimeout = TimeSpan.FromSeconds(15);
     public const int EvalTimeoutMs = 10000;
     public const int DiagnosticsEvalTimeoutMs = 8000;
+
+    // アバターとして受け入れる最大サイズ(過大なレスポンスでメモリを消費しない)
+    public const int AvatarMaxBytes = 2 * 1024 * 1024;
 }
