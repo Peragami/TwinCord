@@ -465,7 +465,7 @@ public partial class MainWindow : Window
         catch { }
         if (body.Length > 120) body = body[..120] + "…";
         var text = string.IsNullOrEmpty(body) ? title : title + "\n" + body;
-        Diagnostics.Log($"通知({acc}): {text.Replace(Environment.NewLine, " ")}");
+        Diagnostics.Log($"通知({acc}): {text.Replace("\r", " ").Replace("\n", " ")}");
         _history.Add(new HistoryWindow.Item(DateTime.Now, n, acc, text));
         Dispatcher.BeginInvoke(() =>
         {
