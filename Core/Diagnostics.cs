@@ -10,24 +10,24 @@ namespace TwinCord;
 public class Diagnostics
 {
     private readonly object _lock = new();
-    private readonly Dictionary<string, int> _failures = new();
-    private readonly Dictionary<string, int> _thresholds = new()
+    private readonly Dictionary<Feature, int> _failures = new();
+    private readonly Dictionary<Feature, int> _thresholds = new()
     {
-        ["badge"] = 6,   // 5秒間隔 x6 = 約30秒応答なしで劣化判定
-        ["hotkey"] = 1,  // 注入失敗は即劣化
-        ["page"] = 3,    // 死活3連続失敗で劣化判定
+        [Feature.Badge] = 6,   // 5秒間隔 x6 = 約30秒応答なしで劣化判定
+        [Feature.Hotkey] = 1,  // 注入失敗は即劣化
+        [Feature.Page] = 3,    // 死活3連続失敗で劣化判定
     };
-    private readonly HashSet<string> _notified = new();
+    private readonly HashSet<Feature> _notified = new();
 
     /// <summary>初めて閾値に到達したときに発火する(セッション中1回のみ)。</summary>
-    public event Action<string>? Degraded;
+    public event Action<Feature>? Degraded;
 
-    public static string DisplayName(string key) => key switch
+    public static string DisplayName(Feature key) => key switch
     {
-        "badge" => "未読バッジ",
-        "hotkey" => "切替キー(Ctrl+1/2)",
-        "page" => "ページ死活監視",
-        _ => key,
+        Feature.Badge => "未読バッジ",
+        Feature.Hotkey => "切替キー(Ctrl+1/2)",
+        Feature.Page => "ページ死活監視",
+        _ => key.ToString(),
     };
 
     public static string AppVersion() =>
@@ -48,12 +48,12 @@ public class Diagnostics
         return string.IsNullOrEmpty(path) ? "不明" : path;
     }
 
-    public void ReportOk(string key)
+    public void ReportOk(Feature key)
     {
         lock (_lock) { _failures[key] = 0; }
     }
 
-    public void ReportFail(string key)
+    public void ReportFail(Feature key)
     {
         bool notify = false;
         lock (_lock)
@@ -72,7 +72,7 @@ public class Diagnostics
         }
     }
 
-    public IReadOnlyList<string> DegradedKeys()
+    public IReadOnlyList<Feature> DegradedKeys()
     {
         lock (_lock)
         {
@@ -87,16 +87,16 @@ public class Diagnostics
     {
         try
         {
-            Directory.CreateDirectory(AppSettings.DataFolder());
             var dir = AppSettings.DataFolder();
-            var path = Path.Combine(dir, "diagnostics.log");
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, AppConstants.LogBaseName + ".log");
             var fi = new FileInfo(path);
             if (fi.Exists && fi.Length > 256 * 1024)
             {
                 for (int i = 2; i >= 0; i--)
                 {
-                    var src = i == 0 ? path : Path.Combine(dir, $"diagnostics.{i}.log");
-                    var dst = Path.Combine(dir, $"diagnostics.{i + 1}.log");
+                    var src = i == 0 ? path : Path.Combine(dir, $"{AppConstants.LogBaseName}.{i}.log");
+                    var dst = Path.Combine(dir, $"{AppConstants.LogBaseName}.{i + 1}.log");
                     if (File.Exists(src))
                     {
                         if (File.Exists(dst)) File.Delete(dst);

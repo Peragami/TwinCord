@@ -43,7 +43,7 @@ public class AppSettings
 
     public static string FilePath() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "TwinCord", "settings.json");
+        AppConstants.AppName, AppConstants.SettingsFileName);
 
     public static string DataFolder() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -100,7 +100,7 @@ public class AppSettings
         if (s.NamesMigrated) return;
         try
         {
-            var file = Path.Combine(DataFolder(), "names.txt");
+            var file = Path.Combine(DataFolder(), AppConstants.LegacyNamesFileName);
             if (File.Exists(file))
             {
                 var lines = File.ReadAllLines(file);

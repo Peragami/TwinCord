@@ -40,19 +40,19 @@ public partial class App : System.Windows.Application
             args.SetObserved();
         };
 
-        _mutex = new Mutex(true, "TwinCord_SingleInstance", out var created);
+        _mutex = new Mutex(true, AppConstants.SingleInstanceMutex, out var created);
         if (!created)
         {
             try
             {
-                using var ev = EventWaitHandle.OpenExisting("TwinCord_ShowWindow");
+                using var ev = EventWaitHandle.OpenExisting(AppConstants.ShowWindowEvent);
                 ev.Set();
             }
             catch { }
             Shutdown();
             return;
         }
-        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "TwinCord_ShowWindow");
+        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, AppConstants.ShowWindowEvent);
         var watcher = new Thread(() =>
         {
             while (true)

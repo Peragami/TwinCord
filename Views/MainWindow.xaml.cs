@@ -1,15 +1,12 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
-using System.Windows.Media.Imaging;
 using System.Windows.Controls;
 using System.Windows.Interop;
-using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using TwinCord.Services;
 using WinForms = System.Windows.Forms;
@@ -33,30 +30,6 @@ public partial class MainWindow : Window
     [DllImport("user32.dll")]
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
-    // Discordページ内でCtrl+1/2を拾ってホストに通知するJS(トップフレームのみ)
-    private const string HotkeyScript =
-        "(function(){try{if(window.top!==window)return;}catch(e){return;}window.addEventListener('keydown',function(e){if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='1'||e.key==='2')){var t=e.target;if(t){var tn=(t.tagName||'').toUpperCase();if(tn==='INPUT'||tn==='TEXTAREA')return;if(t.closest&&t.closest('[contenteditable=\"true\"]'))return;}chrome.webview.postMessage('switch:'+e.key);}});})();";
-
-    // Discordのデスクトップ通知を横取りしてホストに転送するJS(DM・メンション等すべて、トップフレームのみ)
-    // 本物のNotificationは作らない(二重通知防止のためダミーを返す)
-    private const string NotifyScript =
-        "(function(){try{if(window.top!==window)return;window.__tcNotifyHook=1;"
-        + "function send(t,o){try{chrome.webview.postMessage('notify:'+JSON.stringify({title:t||'',body:(o&&o.body)||''}));}catch(e){}}"
-        + "try{var oq=navigator.permissions.query.bind(navigator.permissions);"
-        + "navigator.permissions.query=function(d){if(d&&d.name==='notifications')return Promise.resolve({state:'granted',name:'notifications',onchange:null,addEventListener:function(){},removeEventListener:function(){}});return oq(d);};}catch(e){}"
-        + "var stub={close:function(){},addEventListener:function(){},removeEventListener:function(){}};"
-        + "function Hooked(t,o){send(t,o);return stub;}"
-        + "Hooked.permission='granted';Hooked.requestPermission=function(){return Promise.resolve('granted');};"
-        + "window.Notification=Hooked;"
-        + "try{var P=window.ServiceWorkerRegistration&&ServiceWorkerRegistration.prototype;"
-        + "if(P&&P.showNotification){var orig=P.showNotification;P.showNotification=function(t,o){send(t,o);return orig.apply(this,arguments);};}}catch(e){}"
-        + "}catch(e){}})();";
-
-    // サーバーリストの「アプリをダウンロード」ボタンを隠すJS(ベストエフォート)
-    // 実体はdiv系要素のため、短文テキスト一致＋属性判定で探す(祖先巻き込み防止に文字数制限)
-    private const string HideDownloadScript =
-        "(function(){try{if(window.top!==window)return;}catch(e){return;}try{var css='a[href=\"/download\"],a[href^=\"/download?\"],a[href*=\"discord.com/download\"]{display:none!important}';var st=document.createElement('style');st.textContent=css;(document.head||document.documentElement).appendChild(st);}catch(e){}function isDl(el){try{var g=function(n){try{return el.getAttribute(n)||'';}catch(x){return '';};};var al=g('aria-label')+'|'+g('title');if(/download/i.test(al)&&/apps?/i.test(al))return true;if(al.indexOf('ダウンロード')>=0&&al.indexOf('アプリ')>=0)return true;var t='';try{t=(el.textContent||'').trim();}catch(x){}if(t.length>0&&t.length<=30){if(t==='アプリをダウンロード')return true;if(/download apps?/i.test(t))return true;}return false;}catch(e){return false;}}function kill(){try{var els=document.querySelectorAll('nav div,div[role=\"button\"],div[role=\"treeitem\"],div[tabindex],button,a');for(var i=0;i<els.length;i++){if(isDl(els[i])){els[i].style.setProperty('display','none','important');}}}catch(e){}}function q(){if(q.t)return;q.t=setTimeout(function(){q.t=0;kill();},2000);}try{kill();new MutationObserver(q).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}})();";
-
     private int _current = 1;
 
     private AppSettings _settings = AppSettings.Load();
@@ -78,7 +51,6 @@ public partial class MainWindow : Window
     private HistoryWindow? _historyWindow;
     private UpdateDialog? _updateDialog;
     private bool _exiting;
-    private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
     private static readonly System.Windows.Media.Brush SelectedBrush =
         new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#5865F2"));
@@ -96,7 +68,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         WindowIcon.Set(this);
-        _updates = new UpdateService(_http, Diagnostics.AppVersion, () => _exiting);
+        _updates = new UpdateService(Http.Shared, Diagnostics.AppVersion, () => _exiting);
         _placement = new WindowPlacementTracker(this, () => _settings);
         _placement.Restore();
         _watchdog = new PageWatchdog(
@@ -164,7 +136,7 @@ public partial class MainWindow : Window
     private void ReportHotkeyFailure(string keys)
     {
         Diagnostics.Log($"グローバルホットキー登録失敗: {keys} (他アプリが使用中の可能性)");
-        _diag.ReportFail("hotkey");
+        _diag.ReportFail(Feature.Hotkey);
     }
 
     private IntPtr WndProcHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -320,7 +292,7 @@ public partial class MainWindow : Window
 
     private async Task<CoreWebView2Environment> CreateSharedEnvironmentAsync()
     {
-        var env = await CoreWebView2Environment.CreateAsync(null, EnsureDataFolder("webview2"));
+        var env = await CoreWebView2Environment.CreateAsync(null, EnsureDataFolder(AppConstants.WebViewDataFolder));
         _sharedEnv = env;
         return env;
     }
@@ -337,16 +309,16 @@ public partial class MainWindow : Window
         SetZoom(view, zoom);
         try
         {
-            await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(HotkeyScript);
-            _diag.ReportOk("hotkey");
+            await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(PageScripts.Hotkey);
+            _diag.ReportOk(Feature.Hotkey);
         }
         catch
         {
-            _diag.ReportFail("hotkey");
+            _diag.ReportFail(Feature.Hotkey);
         }
         try
         {
-            var scriptId = await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(NotifyScript);
+            var scriptId = await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(PageScripts.Notify);
             Diagnostics.Log($"通知スクリプト登録(acc{n}): {scriptId}");
         }
         catch (Exception ex) { Diagnostics.Log($"通知スクリプト登録失敗(acc{n}): {ex.Message}"); }
@@ -360,9 +332,7 @@ public partial class MainWindow : Window
                 logged = true;
                 try
                 {
-                    var r = await view.CoreWebView2.ExecuteScriptAsync(
-                        "(function(){try{var p=(typeof Notification!=='undefined')?Notification.permission:'none';"
-                        + "return JSON.stringify({hook:!!window.__tcNotifyHook,perm:p});}catch(e){return 'ERR';}})()");
+                    var r = await view.CoreWebView2.ExecuteScriptAsync(PageScripts.NotificationDiagnostic);
                     Diagnostics.Log($"通知診断(acc{n}): {r}");
                 }
                 catch (Exception ex) { Diagnostics.Log($"通知診断(acc{n}) 失敗: {ex.Message}"); }
@@ -372,7 +342,7 @@ public partial class MainWindow : Window
                 try
                 {
                     // 念のため: JSフックを通らない通知もTwinCordのバルーンで出す
-                    if (!IsDiscordUri(e.SenderOrigin)) return;
+                    if (!Discord.IsDiscordUri(e.SenderOrigin)) return;
                     var title = e.Notification.Title ?? "";
                     var body = e.Notification.Body ?? "";
                     e.Handled = true;
@@ -388,7 +358,7 @@ public partial class MainWindow : Window
                 {
                     Diagnostics.Log($"権限要求(acc{n}): {e.PermissionKind} {e.Uri}");
                     if (e.PermissionKind == CoreWebView2PermissionKind.Notifications
-                        && IsDiscordUri(e.Uri))
+                        && Discord.IsDiscordUri(e.Uri))
                     {
                         e.State = CoreWebView2PermissionState.Allow;
                         e.Handled = true;
@@ -402,7 +372,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(HideDownloadScript);
+                await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(PageScripts.HideDownload);
             }
             catch { }
         }
@@ -410,7 +380,7 @@ public partial class MainWindow : Window
         {
             // 通話中は再読み込みしない(切断防止)
             if (ReferenceEquals(view, View1) ? _watchdog?.InVoice(1) == true : _watchdog?.InVoice(2) == true) return;
-            _diag.ReportFail("page");
+            _diag.ReportFail(Feature.Page);
             try { view.CoreWebView2?.Reload(); } catch { }
         });
         // Discord内部のポップアップ(OAuthログイン等)は既定の新規ウィンドウに任せ、
@@ -418,13 +388,13 @@ public partial class MainWindow : Window
         view.CoreWebView2.NewWindowRequested += (_, e) =>
         {
             var uri = e.Uri ?? "";
-            if (IsDiscordUri(uri)) return;
+            if (Discord.IsDiscordUri(uri)) return;
             e.Handled = true;
             if (string.IsNullOrEmpty(uri)) return;
             try { Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true }); }
             catch { }
         };
-        view.CoreWebView2.Navigate("https://discord.com/channels/@me");
+        view.CoreWebView2.Navigate(Discord.HomeUrl);
     }
 
     // Discordページ内Ctrl+1/2・通知の受信
@@ -434,7 +404,7 @@ public partial class MainWindow : Window
         // (iframeの自前スクリプトによる偽装を防ぐ。トップフレーム側のガードと併用)
         // Sourceが空の場合はWebView2側がURIを特定できていないだけなので通す(通知が止まる方が害が大きい)
         var source = e.Source;
-        if (!string.IsNullOrEmpty(source) && !IsDiscordUri(source))
+        if (!string.IsNullOrEmpty(source) && !Discord.IsDiscordUri(source))
         {
             Diagnostics.Log($"Webメッセージ破棄: source={source}");
             return;
@@ -444,17 +414,6 @@ public partial class MainWindow : Window
         else if (msg == "switch:2") SwitchTo(2);
         else if (msg is not null && msg.StartsWith("notify:", StringComparison.Ordinal))
             HandlePageNotify(sender, msg.Substring(7));
-    }
-
-    /// <summary>
-    /// Discordのオリジンか。ホスト名の完全一致(または .discord.com のサブドメイン)だけを許可する。
-    /// "discord.com.evil.example" のような部分一致での取りこぼしを防ぐ。
-    /// </summary>
-    private static bool IsDiscordUri(string? uri)
-    {
-        if (!Uri.TryCreate(uri, UriKind.Absolute, out var u)) return false;
-        return u.Host.Equals("discord.com", StringComparison.OrdinalIgnoreCase)
-            || u.Host.EndsWith(".discord.com", StringComparison.OrdinalIgnoreCase);
     }
 
     private void HandlePageNotify(object? sender, string json)
@@ -481,7 +440,7 @@ public partial class MainWindow : Window
         if (body.Length > 120) body = body[..120] + "…";
         var text = string.IsNullOrEmpty(body) ? title : title + "\n" + body;
         Diagnostics.Log($"通知({acc}): {text.Replace("\r", " ").Replace("\n", " ")}");
-        _history.Add(new HistoryWindow.Item(DateTime.Now, n, acc, text));
+        _history.Add(new NotificationRecord(DateTime.Now, n, acc, text));
         Dispatcher.BeginInvoke(() =>
         {
             _tray.ShowBalloon("TwinCord - " + acc, text, WinForms.ToolTipIcon.Info, 8000, () =>
@@ -604,7 +563,7 @@ public partial class MainWindow : Window
         try
         {
             Directory.CreateDirectory(AppSettings.DataFolder());
-            File.WriteAllLines(Path.Combine(AppSettings.DataFolder(), "names.txt"), new[] { _settings.Acc1Name, _settings.Acc2Name });
+            File.WriteAllLines(Path.Combine(AppSettings.DataFolder(), AppConstants.LegacyNamesFileName), new[] { _settings.Acc1Name, _settings.Acc2Name });
         }
         catch { }
     }
@@ -658,7 +617,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var info = await Updater.FetchLatestAsync(_http);
+            var info = await Updater.FetchLatestAsync(Http.Shared);
             if (info is null)
                 return "確認できませんでした。";
             if (Updater.IsNewer(Diagnostics.AppVersion(), info.Version))
@@ -835,13 +794,13 @@ public partial class MainWindow : Window
         try
         {
             using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
+                AppConstants.RunKeyPath, true);
             if (key is null) return;
             var exe = Environment.ProcessPath ?? "";
             if (enable)
-                key.SetValue("TwinCord", "\"" + exe + "\"");
+                key.SetValue(AppConstants.RunKeyName, "\"" + exe + "\"");
             else
-                key.DeleteValue("TwinCord", false);
+                key.DeleteValue(AppConstants.RunKeyName, false);
         }
         catch { }
     }
@@ -866,7 +825,7 @@ public partial class MainWindow : Window
             _historyWindow.Activate();
             return;
         }
-        var w = new HistoryWindow(new List<HistoryWindow.Item>(_history.Items), n =>
+        var w = new HistoryWindow(new List<NotificationRecord>(_history.Items), n =>
         {
             BringToFront();
             SwitchTo(n);
@@ -947,7 +906,7 @@ public partial class MainWindow : Window
 
     // ---- 劣化通知・自己診断 ----
 
-    private void OnFeatureDegraded(string key)
+    private void OnFeatureDegraded(Feature key)
     {
         Dispatcher.BeginInvoke(() =>
         {
@@ -1011,7 +970,7 @@ public partial class MainWindow : Window
             var core = view.CoreWebView2;
             if (core is null) return $"{label}: 未起動";
             var sw = Stopwatch.StartNew();
-            var t = core.ExecuteScriptAsync("document.readyState");
+            var t = core.ExecuteScriptAsync(PageScripts.ReadyState);
             if (await Task.WhenAny(t, Task.Delay(8000)) != t)
                 return $"{label}: 応答なし(タイムアウト)";
             var state = await t;
