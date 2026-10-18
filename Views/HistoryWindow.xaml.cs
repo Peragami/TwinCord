@@ -5,12 +5,10 @@ namespace TwinCord;
 
 public partial class HistoryWindow : Window
 {
-    public record Item(DateTime Time, int Account, string AccountName, string Text);
-
-    private readonly List<Item> _items;
+    private readonly List<NotificationRecord> _items;
     private readonly Action<int> _jump;
 
-    public HistoryWindow(List<Item> items, Action<int> jump)
+    public HistoryWindow(List<NotificationRecord> items, Action<int> jump)
     {
         InitializeComponent();
         WindowIcon.Set(this);

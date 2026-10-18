@@ -7,12 +7,12 @@ namespace TwinCord.Services;
 /// </summary>
 public sealed class HistoryStore
 {
-    private readonly List<HistoryWindow.Item> _items = new();
+    private readonly List<NotificationRecord> _items = new();
     private const int MaxItems = 30;
 
-    public IReadOnlyList<HistoryWindow.Item> Items => _items;
+    public IReadOnlyList<NotificationRecord> Items => _items;
 
-    public void Add(HistoryWindow.Item item)
+    public void Add(NotificationRecord item)
     {
         _items.Insert(0, item);
         while (_items.Count > MaxItems) _items.RemoveAt(_items.Count - 1);
@@ -23,9 +23,9 @@ public sealed class HistoryStore
     {
         try
         {
-            var p = Path();
+            var p = FilePath();
             if (!File.Exists(p)) return;
-            var list = System.Text.Json.JsonSerializer.Deserialize<List<HistoryWindow.Item>>(File.ReadAllText(p));
+            var list = System.Text.Json.JsonSerializer.Deserialize<List<NotificationRecord>>(File.ReadAllText(p));
             if (list is null) return;
             _items.AddRange(list.Take(MaxItems));
         }
@@ -37,10 +37,11 @@ public sealed class HistoryStore
         try
         {
             System.IO.Directory.CreateDirectory(AppSettings.DataFolder());
-            File.WriteAllText(Path(), System.Text.Json.JsonSerializer.Serialize(_items.Take(MaxItems).ToList()));
+            File.WriteAllText(FilePath(), System.Text.Json.JsonSerializer.Serialize(_items.Take(MaxItems).ToList()));
         }
         catch { }
     }
 
-    private static string Path() => System.IO.Path.Combine(AppSettings.DataFolder(), "notifications.json");
+    private static string FilePath() => System.IO.Path.Combine(
+        AppSettings.DataFolder(), AppConstants.HistoryFileName);
 }
