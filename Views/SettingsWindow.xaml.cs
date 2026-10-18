@@ -82,7 +82,8 @@ public partial class SettingsWindow : Window
         Zoom2Value.Text = (int)(Zoom2Slider.Value * 100) + "%";
     }
 
-    private void Ok_Click(object sender, RoutedEventArgs e)
+    /// <summary>画面の現在値を編集用コピーへ反映する(OKを押す前のエクスポートでも最新値を出す)。</summary>
+    private void ApplyUiToDraft()
     {
         _settings.StartWithWindows = StartBox.IsChecked == true;
         _settings.MinimizeToTray = TrayBox.IsChecked == true;
@@ -97,6 +98,11 @@ public partial class SettingsWindow : Window
         _settings.HideDownloadButton = HideDlBox.IsChecked == true;
         _settings.Zoom1 = AppSettings.ClampZoom(Zoom1Slider.Value);
         _settings.Zoom2 = AppSettings.ClampZoom(Zoom2Slider.Value);
+    }
+
+    private void Ok_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyUiToDraft();
         DialogResult = true;
     }
 
@@ -136,7 +142,14 @@ public partial class SettingsWindow : Window
 
     private void ExportButton_Click(object sender, RoutedEventArgs e)
     {
-        TransferResult.Text = ExportRequested is null ? "利用できません。" : (ExportRequested(_settings) ?? "");
+        if (ExportRequested is null)
+        {
+            TransferResult.Text = "利用できません。";
+            return;
+        }
+        // まだOKしていない変更もバックアップに含める
+        ApplyUiToDraft();
+        TransferResult.Text = ExportRequested(_settings) ?? "";
     }
 
     private void ImportButton_Click(object sender, RoutedEventArgs e)
