@@ -55,7 +55,7 @@ public partial class MainWindow : Window
     // サーバーリストの「アプリをダウンロード」ボタンを隠すJS(ベストエフォート)
     // 実体はdiv系要素のため、短文テキスト一致＋属性判定で探す(祖先巻き込み防止に文字数制限)
     private const string HideDownloadScript =
-        "(function(){try{if(window.top!==window)return;}catch(e){return;}try{var css='a[href=\"/download\"],a[href^=\"/download?\"],a[href*=\"discord.com/download\"]{display:none!important}';var st=document.createElement('style');st.textContent=css;(document.head||document.documentElement).appendChild(st);}catch(e){}function isDl(el){try{var g=function(n){try{return el.getAttribute(n)||'';}catch(x){return '';};};var al=g('aria-label')+'|'+g('title');if(/download/i.test(al)&&/apps?/i.test(al))return true;if(al.indexOf('ダウンロード')>=0&&al.indexOf('アプリ')>=0)return true;var t='';try{t=(el.textContent||'').trim();}catch(x){}if(t.length>0&&t.length<=30){if(t==='アプリをダウンロード')return true;if(/download apps?/i.test(t))return true;}return false;}catch(e){return false;}}function kill(){try{var els=document.querySelectorAll('nav div,div[role=\"button\"],div[role=\"treeitem\"],div[tabindex],button,a');for(var i=0;i<els.length;i++){if(isDl(els[i])){els[i].style.setProperty('display','none','important');}}}catch(e){}}try{kill();setInterval(kill,3000);}catch(e){}})();";
+        "(function(){try{if(window.top!==window)return;}catch(e){return;}try{var css='a[href=\"/download\"],a[href^=\"/download?\"],a[href*=\"discord.com/download\"]{display:none!important}';var st=document.createElement('style');st.textContent=css;(document.head||document.documentElement).appendChild(st);}catch(e){}function isDl(el){try{var g=function(n){try{return el.getAttribute(n)||'';}catch(x){return '';};};var al=g('aria-label')+'|'+g('title');if(/download/i.test(al)&&/apps?/i.test(al))return true;if(al.indexOf('ダウンロード')>=0&&al.indexOf('アプリ')>=0)return true;var t='';try{t=(el.textContent||'').trim();}catch(x){}if(t.length>0&&t.length<=30){if(t==='アプリをダウンロード')return true;if(/download apps?/i.test(t))return true;}return false;}catch(e){return false;}}function kill(){try{var els=document.querySelectorAll('nav div,div[role=\"button\"],div[role=\"treeitem\"],div[tabindex],button,a');for(var i=0;i<els.length;i++){if(isDl(els[i])){els[i].style.setProperty('display','none','important');}}}catch(e){}}function q(){if(q.t)return;q.t=setTimeout(function(){q.t=0;kill();},2000);}try{kill();new MutationObserver(q).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}})();";
 
     private int _current = 1;
 
@@ -190,6 +190,8 @@ public partial class MainWindow : Window
             _history.Load();
             ApplySettings();
             _watchdog?.Start();
+            // 起動時から最小化/非表示なら、表示側もLowにしておく
+            _watchdog?.SetWindowHidden(WindowState == WindowState.Minimized || !IsVisible);
             // 逐次起動(起動ピークを抑えつつ両方常駐)
             await EnsureViewAsync(1);
             RefreshRail();
@@ -294,10 +296,19 @@ public partial class MainWindow : Window
     }
 
     /// <summary>共有環境は1つだけ作る(2つのViewから呼ばれても二重生成しない)。</summary>
-    private Task<CoreWebView2Environment> GetSharedEnvironmentAsync()
+    private async Task<CoreWebView2Environment> GetSharedEnvironmentAsync()
     {
-        _sharedEnvTask ??= CreateSharedEnvironmentAsync();
-        return _sharedEnvTask;
+        if (_sharedEnvTask is null) _sharedEnvTask = CreateSharedEnvironmentAsync();
+        try
+        {
+            return await _sharedEnvTask;
+        }
+        catch
+        {
+            // 失敗したタスクを残すと再試行しても同じ失敗を返すため、作り直せるようにする
+            _sharedEnvTask = null;
+            throw;
+        }
     }
 
     private async Task<CoreWebView2Environment> CreateSharedEnvironmentAsync()
@@ -820,6 +831,7 @@ public partial class MainWindow : Window
         if (WindowState == WindowState.Minimized)
             WindowState = WindowState.Normal;
         Activate();
+        _watchdog?.SetWindowHidden(false);
     }
 
     private void OpenHistory()
@@ -846,6 +858,8 @@ public partial class MainWindow : Window
         if (_settings.MinimizeToTray && !_exiting)
         {
             e.Cancel = true;
+            // トレイ格納中は表示側もLowに(通話中はPageWatchdog側で除外)
+            _watchdog?.SetWindowHidden(true);
             TrimHostMemory();
             Hide();
             _tray.ShowBalloon("TwinCord", "トレイに格納しました", WinForms.ToolTipIcon.Info, 2000, () =>
@@ -876,7 +890,13 @@ public partial class MainWindow : Window
 
     private void MainWindow_StateChanged(object? sender, EventArgs e)
     {
-        if (WindowState != WindowState.Minimized) return;
+        if (WindowState != WindowState.Minimized)
+        {
+            _watchdog?.SetWindowHidden(false);
+            return;
+        }
+        // 最小化中は表示側もLowに(通話中はPageWatchdog側で除外)
+        _watchdog?.SetWindowHidden(true);
         TrimHostMemory();
         if (_settings.MinimizeToTray)
         {
@@ -892,7 +912,8 @@ public partial class MainWindow : Window
         {
             GC.Collect();
             GC.WaitForPendingFinalizers();
-            EmptyWorkingSet(Process.GetCurrentProcess().Handle);
+            using var p = Process.GetCurrentProcess();
+            EmptyWorkingSet(p.Handle);
         }
         catch { }
     }

@@ -56,6 +56,7 @@ public sealed class PageWatchdog
 
     private bool _inVoice1;
     private bool _inVoice2;
+    private bool _windowHidden;
     private string _avatarUrl1 = "";
     private string _avatarUrl2 = "";
     private DispatcherTimer? _badgeTimer;
@@ -118,12 +119,22 @@ public sealed class PageWatchdog
         _avatarTimer.Start();
     }
 
+    /// <summary>
+    /// ウィンドウが非表示(トレイ格納)/最小化のときは、表示中アカウントもLowにする。
+    /// 通話中のアカウントだけは音声優先でNormalのままにする。
+    /// </summary>
+    public void SetWindowHidden(bool hidden)
+    {
+        if (_windowHidden == hidden) return;
+        _windowHidden = hidden;
+        RefreshMemoryLevels();
+    }
+
     public void RefreshMemoryLevels()
     {
-        bool voice = _inVoice1 || _inVoice2;
         int current = _current();
-        SetMemoryLevel(_acc1.View, !voice && current != 1);
-        SetMemoryLevel(_acc2.View, !voice && current != 2);
+        SetMemoryLevel(_acc1.View, !_inVoice1 && (_windowHidden || current != 1));
+        SetMemoryLevel(_acc2.View, !_inVoice2 && (_windowHidden || current != 2));
     }
 
     public static void SetMemoryLevel(WpfWebView2 view, bool low)
@@ -150,7 +161,11 @@ public sealed class PageWatchdog
         {
             var task = core.ExecuteScriptAsync(script);
             if (await Task.WhenAny(task, Task.Delay(timeoutMs)) != task)
+            {
+                // 打ち切った後もCOM側の処理は続くため、例外だけは観測しておく(蓄積・未処理例外の防止)
+                _ = task.ContinueWith(t => { _ = t.Exception; }, TaskScheduler.Default);
                 return null;
+            }
             return (await task)?.Trim();
         }
         catch
@@ -202,6 +217,9 @@ public sealed class PageWatchdog
         catch { }
     }
 
+    // アバター画像はデコード済みのBitmapSourceを使い回す(毎回のデコードを避ける)
+    private readonly Dictionary<int, (DateTime Stamp, BitmapSource Bmp)> _iconCache = new();
+
     private void SetAccountIcon(int n)
     {
         var slot = Slot(n);
@@ -211,19 +229,25 @@ public sealed class PageWatchdog
         {
             try
             {
-                var bmp = new BitmapImage();
-                bmp.BeginInit();
-                bmp.CacheOption = BitmapCacheOption.OnLoad;
-                bmp.UriSource = new Uri(path);
-                bmp.DecodePixelWidth = 96;
-                bmp.EndInit();
-                bmp.Freeze();
+                var stamp = File.GetLastWriteTimeUtc(path);
+                if (!_iconCache.TryGetValue(n, out var cached) || cached.Stamp != stamp)
+                {
+                    var bmp = new BitmapImage();
+                    bmp.BeginInit();
+                    bmp.CacheOption = BitmapCacheOption.OnLoad;
+                    bmp.UriSource = new Uri(path);
+                    bmp.DecodePixelWidth = 96;
+                    bmp.EndInit();
+                    bmp.Freeze();
+                    cached = (stamp, bmp);
+                    _iconCache[n] = cached;
+                }
                 var img = new System.Windows.Controls.Image
                 {
                     Width = 40,
                     Height = 40,
                     Stretch = System.Windows.Media.Stretch.UniformToFill,
-                    Source = bmp,
+                    Source = cached.Bmp,
                 };
                 img.Clip = new System.Windows.Media.EllipseGeometry(new System.Windows.Point(20, 20), 20, 20);
                 btn.Content = img;
