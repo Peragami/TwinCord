@@ -61,14 +61,13 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>
-    /// インポート後の内容を編集用コピーと画面へ反映する。
-    /// これをしないと、インポート後にOKを押したとき draft(インポート前)で上書きされてしまう。
+    /// 編集中の設定(「保存」で確定する)。インポート先として使う。
+    /// ここへ書いておけば、キャンセルされた場合は元の設定が残る。
     /// </summary>
-    public void ReloadFrom(AppSettings settings)
-    {
-        _settings.CopyFrom(settings);
-        ApplyToUi();
-    }
+    public AppSettings Draft => _settings;
+
+    /// <summary>編集中の内容を画面へ反映し直す(インポート後に使う)。</summary>
+    public void RefreshUi() => ApplyToUi();
 
     private void ZoomSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {

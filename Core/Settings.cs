@@ -54,12 +54,12 @@ public class AppSettings
         AppSettings s = new();
         try
         {
-            if (File.Exists(FilePath()))
-            {
-                var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath()));
-                if (loaded is not null) s = loaded;
-            }
+            // 存在確認と読み込みを分けると、その間に消された場合に例外が出るため一度で読む
+            var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath()));
+            if (loaded is not null) s = loaded;
         }
+        catch (FileNotFoundException) { }
+        catch (DirectoryNotFoundException) { }
         catch (Exception ex)
         {
             // 破損していた場合は既定値で起動する(上書きされる前にログに残す)

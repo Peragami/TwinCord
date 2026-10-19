@@ -20,13 +20,21 @@ public sealed class WindowPlacementTracker
         window.SizeChanged += (_, _) => Schedule();
     }
 
+    private const double MinSize = 200;
+
     public void Restore()
     {
         try
         {
             var s = _settings();
-            if (s.WinWidth is not double width || s.WinHeight is not double height
-                || width < 200 || height < 200) return;
+            if (s.WinWidth is not double width || s.WinHeight is not double height) return;
+            // 壊れた値(NaN/∞)は復元しない
+            if (!double.IsFinite(width) || !double.IsFinite(height)) return;
+            // 画面より大きすぎる値は仮想スクリーン内に丸める(操作不能にならないように)
+            var maxW = Math.Max(MinSize, SystemParameters.VirtualScreenWidth);
+            var maxH = Math.Max(MinSize, SystemParameters.VirtualScreenHeight);
+            width = Math.Clamp(width, MinSize, maxW);
+            height = Math.Clamp(height, MinSize, maxH);
             _window.Width = width;
             _window.Height = height;
             if (s.WinLeft is double left && s.WinTop is double top)

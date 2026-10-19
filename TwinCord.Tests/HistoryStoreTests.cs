@@ -55,6 +55,7 @@ public class HistoryStoreTests
         using var temp = new TempFolder();
         var store = new HistoryStore(temp.Path);
         store.Add(new NotificationRecord(DateTime.Now, 1, "A", "old"));
+        store.Flush(); // バックグラウンド保存の完了を待つ
 
         File.WriteAllText(Path.Combine(temp.Path, AppConstants.HistoryFileName), "[]");
         store.Load();
@@ -84,6 +85,7 @@ public class HistoryStoreTests
 
         Assert.Equal(30, store.Items.Count);
         Assert.Equal("34", store.Items[0].Text);
+        store.Flush(); // バックグラウンド保存の完了を待つ
 
         var reloaded = new HistoryStore(temp.Path);
         reloaded.Load();

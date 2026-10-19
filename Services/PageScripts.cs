@@ -92,6 +92,10 @@ public static class PageScripts
         (function () {
           try { if (window.top !== window) return; } catch (e) { return; }
 
+          // 設定を切り替えたときに今のページへ再実行するため、
+          // 二重起動(styleタグ・MutationObserverの重複)を防ぐ
+          try { if (window.__tcHideDl) return; window.__tcHideDl = 1; } catch (e) { }
+
           try {
             var css = 'a[href="/download"],a[href^="/download?"],a[href*="discord.com/download"]{display:none!important}';
             var st = document.createElement('style');
@@ -140,8 +144,43 @@ public static class PageScripts
         })();
         """;
 
-    /// <summary>通話中か('1'=通話中 / '0'=なし / '-1'=判定不能)。</summary>
-    public static readonly string Voice = BuildVoice();
+    /// <summary>
+    /// バッジ・未読・通話を1回のDOM走査でまとめて取得する(バックグラウンドのポーリング負荷を下げる)。
+    /// 戻り値はJSON文字列 {'b':バッジ数,'u':未読数,'v':'1'(通話中)/'0'(なし)/その他(判定不能)}。
+    /// </summary>
+    public static string Probe(bool includeUnread) => includeUnread ? _probeWithUnread : _probe;
+
+    /// <summary>ポーリング結果。Voiceは'1'(通話中)/'0'(なし)/それ以外(判定不能)。</summary>
+    public readonly record struct ProbeResult(int Badge, int Unread, string Voice)
+    {
+        public bool VoiceKnown => Voice is "0" or "1";
+        public bool InVoice => Voice == "1";
+    }
+
+    /// <summary>ExecuteScriptAsyncの戻り値(JSON文字列)を解釈する。解釈できない/異常値ならfalse。</summary>
+    public static bool TryParseProbe(string? raw, out ProbeResult result)
+    {
+        result = default;
+        if (string.IsNullOrEmpty(raw)) return false;
+        try
+        {
+            // 戻り値はJSONエンコードされた文字列で、その中身がさらにJSON
+            var inner = JsonSerializer.Deserialize<string>(raw);
+            if (string.IsNullOrEmpty(inner)) return false;
+            using var doc = JsonDocument.Parse(inner);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("b", out var b) || !root.TryGetProperty("v", out var v)) return false;
+            if (!b.TryGetInt32(out var badge) || badge < 0) return false; // 負値はスクリプト内部異常
+            int unread = 0;
+            if (root.TryGetProperty("u", out var u)) u.TryGetInt32(out unread);
+            result = new ProbeResult(badge, unread, v.GetString() ?? "");
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     /// <summary>マイページのアバターURL(size=64)。</summary>
     public const string Avatar = """
@@ -167,52 +206,6 @@ public static class PageScripts
         })()
         """;
 
-    /// <summary>未読チャンネル数(ベストエフォート)。</summary>
-    public const string Unread = """
-        (() => {
-          try {
-            const sels = ['[class*=unreadBar]', '[class*=unreadPill]', '[aria-label*=未読]',
-                          '[aria-label*=unread]', '[aria-label*=Unread]'];
-            const seen = new Set();
-            let n = 0;
-            for (const s of sels) {
-              try {
-                document.querySelectorAll(s).forEach(function (el) {
-                  if (seen.has(el)) return;
-                  seen.add(el);
-                  n++;
-                });
-              } catch (_) { }
-            }
-            return n;
-          } catch (_) { return -1; }
-        })()
-        """;
-
-    /// <summary>未読・メンション数(ベストエフォート)。</summary>
-    public const string Badge = """
-        (() => {
-          try {
-            let n = 0;
-            const seen = new Set();
-            const sels = ['[class*=numberBadge]', '[class*=unreadMention]', '[aria-label*=メンション]',
-                          '[aria-label*=mention]', '[aria-label*=Mention]'];
-            for (const s of sels) {
-              try {
-                document.querySelectorAll(s).forEach(function (el) {
-                  if (seen.has(el)) return;
-                  seen.add(el);
-                  const t = ((el.innerText || el.textContent) || '').trim();
-                  const d = t.match(/\d+/);
-                  n += d ? parseInt(d[0], 10) : 1;
-                });
-              } catch (_) { }
-            }
-            return n;
-          } catch (_) { return -1; }
-        })()
-        """;
-
     /// <summary>通知フックの診断(JSON文字列)。</summary>
     public const string NotificationDiagnostic = """
         (function () {
@@ -235,25 +228,77 @@ public static class PageScripts
         "Katkaise", "Koble fra", "Afbryd", "Koppla från",
     ];
 
-    private static string BuildVoice()
+    private static string BuildVoiceSelector()
     {
-        // JSONの配列リテラルはそのままJSの配列として使える(引用符の手書きエスケープを避ける)
-        var labels = JsonSerializer.Serialize(DisconnectLabels, new JsonSerializerOptions
+        var parts = new List<string>
+        {
+            // ロケール非依存のRTCパネル要素を保険として見る
+            "[class*=\"rtcConnectionStatus\"]",
+            "[class*=\"voicePanel\"]",
+            "[class*=\"callContainer\"]",
+            "[aria-label*=\"Від\"]",
+        };
+        foreach (var label in DisconnectLabels)
+        {
+            // 引用符と改行だけ最小限にエスケープして属性セレクタへ埋め込む
+            parts.Add($"[aria-label=\"{label.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"]");
+        }
+        return string.Join(",", parts);
+    }
+
+    // Probeは起動時に一度だけ組み立てる(DisconnectLabelsの初期化より後に置く必要がある)
+    private static readonly string _probe = BuildProbe(includeUnread: false);
+    private static readonly string _probeWithUnread = BuildProbe(includeUnread: true);
+
+    // 未読チャンネル数の走査(Probeへ埋め込む)
+    private const string UnreadScan = """
+        const seenU = new Set();
+        const us = ['[class*=unreadBar]', '[class*=unreadPill]', '[aria-label*=未読]',
+                    '[aria-label*=unread]', '[aria-label*=Unread]'];
+        for (const s of us) {
+          try {
+            document.querySelectorAll(s).forEach(function (el) {
+              if (seenU.has(el)) return;
+              seenU.add(el);
+              unread++;
+            });
+          } catch (_) { }
+        }
+        """;
+
+    private static string BuildProbe(bool includeUnread)
+    {
+        var voice = JsonSerializer.Serialize(BuildVoiceSelector(), new JsonSerializerOptions
         {
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         });
+        var unread = includeUnread ? UnreadScan : "";
         return $$"""
             (() => {
               try {
-                const labels = {{labels}};
-                for (const l of labels) {
-                  if (document.querySelector('[aria-label="' + l + '"]')) return '1';
+                let badge = 0;
+                const seen = new Set();
+                const bs = ['[class*=numberBadge]', '[class*=unreadMention]', '[aria-label*=メンション]',
+                            '[aria-label*=mention]', '[aria-label*=Mention]'];
+                for (const s of bs) {
+                  try {
+                    document.querySelectorAll(s).forEach(function (el) {
+                      if (seen.has(el)) return;
+                      seen.add(el);
+                      const t = ((el.innerText || el.textContent) || '').trim();
+                      const d = t.match(/\d+/);
+                      badge += d ? parseInt(d[0], 10) : 1;
+                    });
+                  } catch (_) { }
                 }
-                // ロケール非依存のRTCパネル要素を保険として見る
-                if (document.querySelector('[aria-label*="Від"]')) return '1';
-                if (document.querySelector('[class*="rtcConnectionStatus"],[class*="voicePanel"],[class*="callContainer"]')) return '1';
-                return '0';
-              } catch (e) { return '-1'; }
+                let unread = 0;
+                {{unread}}
+                // 通話中なら「切断」ボタン(またはロケール非依存のRTC要素)がDOMにある。
+                // セレクタ異常時は判定不能('?')にして状態を維持する(バッジ側を巻き込まない)
+                let voice = '?';
+                try { voice = document.querySelector({{voice}}) ? '1' : '0'; } catch (_) { voice = '?'; }
+                return JSON.stringify({ b: badge, u: unread, v: voice });
+              } catch (e) { return 'ERR'; }
             })()
             """;
     }

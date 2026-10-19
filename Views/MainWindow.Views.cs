@@ -81,6 +81,44 @@ public partial class MainWindow : Window
             Diagnostics.Log($"acc1の初回表示待ちがタイムアウト({AppConstants.SecondViewWait.TotalSeconds}秒)したためacc2を開始");
     }
 
+    /// <summary>1枚目の初回読み込みが失敗したときに、2枚目の開始条件を解く(待ち続けない)。</summary>
+    private void FirstViewLoadFailed()
+    {
+        if (_firstViewLoaded.Task.IsCompleted) return;
+        Diagnostics.Log("acc1の初回読み込みに失敗したためacc2を開始");
+        _firstViewLoaded.TrySetResult();
+    }
+
+    /// <summary>ページ生成時に走るスクリプトを登録する。失敗はログと劣化判定(機能=page)へ反映する。</summary>
+    private async Task RegisterDocumentScriptAsync(int n, Microsoft.Web.WebView2.Wpf.WebView2 view,
+        string script, Feature? feature)
+    {
+        var label = feature == Feature.HotkeyPage ? "キー操作" : "通知";
+        try
+        {
+            var scriptId = await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(script);
+            if (feature is Feature f) _diag.ReportOk(f);
+            Diagnostics.Log($"{label}スクリプト登録(acc{n}): {scriptId}");
+        }
+        catch (Exception ex)
+        {
+            if (feature is Feature f) _diag.ReportFail(f);
+            Diagnostics.Log($"{label}スクリプト登録失敗(acc{n}): {ex.Message}");
+        }
+    }
+
+    /// <summary>「アプリをダウンロード」ボタンを今表示しているページへ反映する(再読み込み不要)。</summary>
+    private static async Task HideDownloadAsync(Microsoft.Web.WebView2.Wpf.WebView2 view)
+    {
+        try
+        {
+            var core = view.CoreWebView2;
+            if (core is null) return;
+            await core.ExecuteScriptAsync(PageScripts.HideDownload);
+        }
+        catch { }
+    }
+
     private static string EnsureDataFolder(string name)
     {
         var dir = Path.Combine(AppSettings.DataFolder(), name);
@@ -126,21 +164,10 @@ public partial class MainWindow : Window
         // リンクホバー時の左下URLプレビュー(ステータスバー)を出さない
         try { view.CoreWebView2.Settings.IsStatusBarEnabled = false; } catch { }
         SetZoom(view, zoom);
-        try
-        {
-            await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(PageScripts.Hotkey);
-            _diag.ReportOk(Feature.HotkeyPage);
-        }
-        catch
-        {
-            _diag.ReportFail(Feature.HotkeyPage);
-        }
-        try
-        {
-            var scriptId = await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(PageScripts.Notify);
-            Diagnostics.Log($"通知スクリプト登録(acc{n}): {scriptId}");
-        }
-        catch (Exception ex) { Diagnostics.Log($"通知スクリプト登録失敗(acc{n}): {ex.Message}"); }
+        // ホットキーと通知フックは互いに独立なので、登録はまとめて投げる(直列待ちを減らす)
+        await Task.WhenAll(
+            RegisterDocumentScriptAsync(n, view, PageScripts.Hotkey, Feature.HotkeyPage),
+            RegisterDocumentScriptAsync(n, view, PageScripts.Notify, null));
         // 通知の受け取り経路を記録(原因調査用)
         try
         {
@@ -152,6 +179,14 @@ public partial class MainWindow : Window
                     _processReloadCount[n] = 0;
                     _reloadFailureShown[n] = false;
                     OnViewContentLoaded(n, view);
+                    // 設定ONでの再読み込み後、および起動後にONへ切り替えた場合の反映
+                    // (スクリプト側のフラグで二重実行は防ぐ)
+                    if (_settings.HideDownloadButton) await HideDownloadAsync(view);
+                }
+                else
+                {
+                    // 初回読み込みに失敗したら、2枚目を待たせ続けない(オフライン起動対策)
+                    if (n == 1) FirstViewLoadFailed();
                 }
                 if (logged) return;
                 logged = true;
@@ -171,8 +206,8 @@ public partial class MainWindow : Window
                     var title = e.Notification.Title ?? "";
                     var body = e.Notification.Body ?? "";
                     e.Handled = true;
-                    Diagnostics.Log($"通知ネイティブ(acc{n}): {title} / {body}");
-                    var shown = HandlePageNotify(view, JsonSerializer.Serialize(new { title, body }));
+                    Diagnostics.Log($"通知ネイティブ(acc{n}): {title} / 本文{body.Length}文字");
+                    var shown = HandlePageNotify(view, JsonSerializer.Serialize(new { title, body }), viaPage: false);
                     // 実際にバルーンを出したときだけ「表示した」とページへ返す
                     if (shown) { try { e.Notification.ReportShown(); } catch { } }
                 }

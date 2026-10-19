@@ -16,8 +16,9 @@ namespace TwinCord;
 public partial class MainWindow : Window
 {
     // JS経路とネイティブ経路が同じ通知を二重に出すのを抑える(UIスレッドのみで使用)
-    private static readonly TimeSpan NotificationDedupWindow = TimeSpan.FromSeconds(2);
-    private readonly Dictionary<string, DateTime> _recentNotifications = new();
+    private readonly NotificationDedup _dedup = new(TimeSpan.FromSeconds(2));
+    // 「通知抑制(acc1): 通知OFF」のようなログは理由ごとに1回だけ出す(通知が多いとログが埋まるため)
+    private readonly HashSet<string> _suppressLogged = new();
 
     // Discordページ内Ctrl+1/2・通知の受信
     private void View_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -32,7 +33,17 @@ public partial class MainWindow : Window
             Diagnostics.Log($"Webメッセージ破棄: source={source}");
             return;
         }
-        var msg = e.TryGetWebMessageAsString();
+        string? msg;
+        try
+        {
+            // 文字列以外(オブジェクト等)を送られると例外になる
+            msg = e.TryGetWebMessageAsString();
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.Log($"Webメッセージを無視(文字列以外): {ex.GetType().Name}");
+            return;
+        }
         if (msg == "switch:1") SwitchTo(1);
         else if (msg == "switch:2") SwitchTo(2);
         else if (msg is not null && msg.StartsWith("notify:", StringComparison.Ordinal))
@@ -44,22 +55,22 @@ public partial class MainWindow : Window
                 Diagnostics.Log("Webメッセージ破棄: 送信元不明の通知");
                 return;
             }
-            HandlePageNotify(sender, msg.Substring(7));
+            HandlePageNotify(sender, msg.Substring(7), viaPage: true);
         }
     }
 
     /// <summary>通知を表示した(または履歴に積んだ)ならtrue。抑制・重複ならfalse。</summary>
-    private bool HandlePageNotify(object? sender, string json)
+    private bool HandlePageNotify(object? sender, string json, bool viaPage)
     {
         int n = ReferenceEquals(sender, View2) ? 2 : 1;
         // マスターOFFでは記録も通知もしない
-        if (!_settings.NotifyEnabled) { Diagnostics.Log($"通知抑制(acc{n}): 通知OFF"); return false; }
+        if (!_settings.NotifyEnabled) { LogSuppressed(n, "通知OFF"); return false; }
         // 前面で操作中のときだけ「表示中」とみなす(背面にあるだけでは通知を抑えない)
         bool focused = IsVisible && WindowState != WindowState.Minimized && IsActive;
         // 格納中のみ通知する設定なら、表示中はすべて出さない
-        if (focused && _settings.NotifyHiddenOnly) { Diagnostics.Log($"通知抑制(acc{n}): 表示中は出さない設定"); return false; }
+        if (focused && _settings.NotifyHiddenOnly) { LogSuppressed(n, "表示中は出さない設定"); return false; }
         // 見ている最中のアカウントは通知不要(設定で変更可)
-        if (focused && _current == n && _settings.SkipViewedAccount) { Diagnostics.Log($"通知抑制(acc{n}): 表示中のアカウント"); return false; }
+        if (focused && _current == n && _settings.SkipViewedAccount) { LogSuppressed(n, "表示中のアカウント"); return false; }
         var acc = AccName(n);
         string title = acc, body = "";
         try
@@ -80,31 +91,16 @@ public partial class MainWindow : Window
         body = TruncateSafe(body, 120);
 
         // 同じ通知がJS経路とネイティブ経路の両方から来た場合の重複排除
-        var key = n + "\u001f" + title + "\u001f" + body;
-        var now = DateTime.UtcNow;
-        if (_recentNotifications.TryGetValue(key, out var last)
-            && now - last < NotificationDedupWindow)
+        var origin = viaPage ? NotificationDedup.Origin.Page : NotificationDedup.Origin.Native;
+        if (_dedup.IsDuplicate(n, title, body, origin, DateTime.UtcNow))
         {
-            Diagnostics.Log($"通知重複を抑制(acc{n}): {title}");
+            LogSuppressed(n, $"重複({origin})");
             return false;
-        }
-        _recentNotifications[key] = now;
-        if (_recentNotifications.Count > 32)
-        {
-            foreach (var stale in _recentNotifications
-                .Where(kv => now - kv.Value > TimeSpan.FromSeconds(10))
-                .Select(kv => kv.Key).ToList())
-                _recentNotifications.Remove(stale);
-            if (_recentNotifications.Count > 64)
-            {
-                foreach (var old in _recentNotifications.OrderBy(kv => kv.Value)
-                    .Take(_recentNotifications.Count - 32).Select(kv => kv.Key).ToList())
-                    _recentNotifications.Remove(old);
-            }
         }
 
         var text = string.IsNullOrEmpty(body) ? title : title + "\n" + body;
-        Diagnostics.Log($"通知({acc}): {text.Replace("\r", " ").Replace("\n", " ")}");
+        // 本文そのものは履歴に残るため、ログは「本文N文字」に留める(診断ログが長く残るため)
+        Diagnostics.Log($"通知({acc}): {title} / 本文{body.Length}文字");
         _history.Add(new NotificationRecord(DateTime.Now, n, acc, text));
         Dispatcher.BeginInvoke(() =>
         {
@@ -116,6 +112,13 @@ public partial class MainWindow : Window
             });
         });
         return true;
+    }
+
+    /// <summary>抑止ログは理由ごとに1回だけ出す(通知が多い日にログを埋めない)。</summary>
+    private void LogSuppressed(int n, string reason)
+    {
+        if (_suppressLogged.Add(n + ":" + reason))
+            Diagnostics.Log($"通知抑制(acc{n}): {reason}");
     }
 
     /// <summary>タイトル用に制御文字を空白へ置換し、最大長で切る。</summary>

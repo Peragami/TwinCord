@@ -44,6 +44,8 @@ public partial class MainWindow : Window
         RefreshRail();
         // 通話中は両方とも抑制しない(音声優先)。通常時は非表示側のヒープを絞る
         _watchdog?.RefreshMemoryLevels();
+        // 切り替えた直後はバッジ/通話の確認を早める(変化が無くて間隔が伸びていても戻す)
+        _watchdog?.WakeUp();
     }
 
 
