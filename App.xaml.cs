@@ -52,6 +52,9 @@ public partial class App : System.Windows.Application
             Shutdown();
             return;
         }
+        // 二重起動の通知先は、引き継ぎ確認など他のダイアログより先に用意する。
+        // 後から作ると、ダイアログ表示中に二重起動されたとき無反応(何も出ずに終了)になる
+        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, AppConstants.ShowWindowEvent);
         // ポータブル形式: データはexeと同じフォルダのdata配下に置く。書けない場所では起動しない
         var dataError = AppSettings.PrepareDataFolder();
         if (dataError is not null)
@@ -65,7 +68,6 @@ public partial class App : System.Windows.Application
         }
         // 旧バージョン(1.10.xまで)のデータがあれば、一度だけ引き継ぎを確認する
         OfferDataMigration();
-        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, AppConstants.ShowWindowEvent);
         // 単一exe(展開方式)はバージョンごとに%TEMP%へ展開するため、古い展開フォルダを掃除する
         BundleCleanup.Start();
         var watcher = new Thread(() =>

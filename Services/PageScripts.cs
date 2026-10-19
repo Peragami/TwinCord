@@ -87,21 +87,22 @@ public static class PageScripts
         })();
         """;
 
-    /// <summary>サーバーリストの「アプリをダウンロード」ボタンを隠す(ベストエフォート)。</summary>
+    /// <summary>
+    /// サーバーリストの「アプリをダウンロード」ボタンを隠す(ベストエフォート)。
+    /// 文書ごとに「適用/解除」できる関数を用意し、今の設定はホストが HideDownloadApply で渡す。
+    /// (設定を切り替えたときも、再読み込み後の新しい文書にも同じ関数で反映できる)
+    /// </summary>
     public const string HideDownload = """
         (function () {
           try { if (window.top !== window) return; } catch (e) { return; }
 
-          // 設定を切り替えたときに今のページへ再実行するため、
-          // 二重起動(styleタグ・MutationObserverの重複)を防ぐ
-          try { if (window.__tcHideDl) return; window.__tcHideDl = 1; } catch (e) { }
+          // 文書ごとに1回だけ用意する(再実行してもstyleタグ・MutationObserverは二重にならない)
+          if (window.__tcHideDlApply) return;
 
-          try {
-            var css = 'a[href="/download"],a[href^="/download?"],a[href*="discord.com/download"]{display:none!important}';
-            var st = document.createElement('style');
-            st.textContent = css;
-            (document.head || document.documentElement).appendChild(st);
-          } catch (e) { }
+          var on = false;
+          var style = null;
+          var observer = null;
+          var hidden = [];
 
           // 実体はdiv系要素のため、短文テキスト一致＋属性判定で探す(祖先巻き込み防止に文字数制限)
           function isDl(el) {
@@ -112,6 +113,8 @@ public static class PageScripts
               var al = g('aria-label') + '|' + g('title');
               if (/download/i.test(al) && /apps?/i.test(al)) return true;
               if (al.indexOf('ダウンロード') >= 0 && al.indexOf('アプリ') >= 0) return true;
+              // 全DOM走査の負荷を下げるため、大きい入れ物はテキストを読まずに除外する
+              if (el.childElementCount > 4) return false;
               var t = '';
               try { t = (el.textContent || '').trim(); } catch (x) { }
               if (t.length > 0 && t.length <= 30) {
@@ -124,10 +127,16 @@ public static class PageScripts
 
           function kill() {
             try {
+              var next = [];
               var els = document.querySelectorAll('nav div,div[role="button"],div[role="treeitem"],div[tabindex],button,a');
               for (var i = 0; i < els.length; i++) {
-                if (isDl(els[i])) els[i].style.setProperty('display', 'none', 'important');
+                if (isDl(els[i])) {
+                  els[i].style.setProperty('display', 'none', 'important');
+                  next.push(els[i]);
+                }
               }
+              // 解除時に元へ戻せるよう、隠した要素だけを持つ(再描画で消えた要素は残さない)
+              hidden = next;
             } catch (e) { }
           }
 
@@ -137,12 +146,46 @@ public static class PageScripts
             q.t = setTimeout(function () { q.t = 0; kill(); }, 2000);
           }
 
-          try {
-            kill();
-            new MutationObserver(q).observe(document.documentElement, { childList: true, subtree: true });
-          } catch (e) { }
+          function enable() {
+            if (on) return;
+            on = true;
+            try {
+              if (!style) {
+                style = document.createElement('style');
+                style.textContent = 'a[href="/download"],a[href^="/download?"],a[href*="discord.com/download"]{display:none!important}';
+                (document.head || document.documentElement).appendChild(style);
+              }
+            } catch (e) { }
+            try {
+              kill();
+              if (!observer) observer = new MutationObserver(q);
+              observer.observe(document.documentElement, { childList: true, subtree: true });
+            } catch (e) { }
+          }
+
+          function disable() {
+            if (!on) return;
+            on = false;
+            try { if (observer) observer.disconnect(); } catch (e) { }
+            try { if (style) style.remove(); style = null; } catch (e) { }
+            try {
+              for (var i = 0; i < hidden.length; i++) {
+                var el = hidden[i];
+                if (el && el.style) el.style.removeProperty('display');
+              }
+            } catch (e) { }
+            hidden = [];
+          }
+
+          window.__tcHideDlApply = function (want) {
+            try { if (want) enable(); else disable(); return true; } catch (e) { return false; }
+          };
         })();
         """;
+
+    /// <summary>HideDownloadが用意した関数へ今の設定を渡す(ホスト側から実行する)。</summary>
+    public static string HideDownloadApply(bool hide) =>
+        $"(window.__tcHideDlApply && window.__tcHideDlApply({(hide ? "true" : "false")}))";
 
     /// <summary>
     /// バッジ・未読・通話を1回のDOM走査でまとめて取得する(バックグラウンドのポーリング負荷を下げる)。

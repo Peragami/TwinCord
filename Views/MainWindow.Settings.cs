@@ -147,12 +147,9 @@ public partial class MainWindow : Window
             Badge1.Visibility = Visibility.Collapsed;
             Badge2.Visibility = Visibility.Collapsed;
         }
-        // 「アプリをダウンロード」を隠す設定は、再読み込みを待たず今のページへ反映する
-        if (_settings.HideDownloadButton)
-        {
-            _ = HideDownloadAsync(View1);
-            _ = HideDownloadAsync(View2);
-        }
+        // 「アプリをダウンロード」を隠す設定は、再読み込みを待たず今のページへ反映する(解除も同じ)
+        _ = ApplyHideDownloadAsync(1, View1, _settings.HideDownloadButton);
+        _ = ApplyHideDownloadAsync(2, View2, _settings.HideDownloadButton);
     }
 
     private static void ApplyRunKey(bool enable)

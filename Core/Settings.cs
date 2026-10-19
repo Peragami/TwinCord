@@ -7,6 +7,9 @@ namespace TwinCord;
 
 public class AppSettings
 {
+    /// <summary>設定ファイルの形式版。形式を変えたときの移行判定に使う。</summary>
+    public int SettingsVersion { get; set; } = CurrentSettingsVersion;
+
     public bool StartWithWindows { get; set; }
     public bool MinimizeToTray { get; set; } = true;
     public bool UnreadBadge { get; set; } = true;
@@ -25,6 +28,9 @@ public class AppSettings
 
     /// <summary>アカウント名の最大文字数(表示崩れ防止)。</summary>
     public const int NameMaxLength = 24;
+
+    /// <summary>現在の設定形式の版。上げるときはLoadFromへ移行処理を足す。</summary>
+    public const int CurrentSettingsVersion = 1;
 
     public double Zoom1 { get; set; } = 1.0;
     public double Zoom2 { get; set; } = 1.0;
@@ -83,23 +89,29 @@ public class AppSettings
         }
     }
 
-    public static AppSettings Load()
+    public static AppSettings Load() => LoadFrom(FilePath());
+
+    /// <summary>指定したファイルから設定を読む(テストから一時ファイルで検証できるように分離)。</summary>
+    internal static AppSettings LoadFrom(string path)
     {
         AppSettings s = new();
         try
         {
             // 存在確認と読み込みを分けると、その間に消された場合に例外が出るため一度で読む
-            var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath()));
+            var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path));
             if (loaded is not null) s = loaded;
         }
         catch (FileNotFoundException) { }
         catch (DirectoryNotFoundException) { }
         catch (Exception ex)
         {
-            // 破損していた場合は既定値で起動する(上書きされる前にログに残す)
+            // 破損していた場合は既定値で起動する(次の保存で上書きされる前に退避してログに残す)
             Diagnostics.Log("設定の読み込みに失敗したため既定値で起動: " + ex.Message);
+            BackupCorruptFile(path);
             s = new AppSettings();
         }
+        // 形式版が無い/不正なファイルは現行版として扱う(将来、版ごとの移行処理をここで分岐する)
+        if (s.SettingsVersion <= 0) s.SettingsVersion = CurrentSettingsVersion;
         s.Zoom1 = ClampZoom(s.Zoom1);
         s.Zoom2 = ClampZoom(s.Zoom2);
         // 手書き/インポートされた設定でも表示が崩れないよう、名前を正規化しておく
@@ -107,6 +119,16 @@ public class AppSettings
         s.Acc2Name = CleanNameOr(s.Acc2Name, "Acc2");
         MigrateNames(s);
         return s;
+    }
+
+    /// <summary>壊れた設定ファイルを settings.json.bak へ退避する(中身を確認できるように残す)。</summary>
+    private static void BackupCorruptFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path)) File.Move(path, path + ".bak", true);
+        }
+        catch { }
     }
 
     /// <summary>制御文字(改行等)を除去して前後の空白を落とし、最大長で切り詰める。</summary>
@@ -183,6 +205,7 @@ public class AppSettings
         Acc1Name = other.Acc1Name;
         Acc2Name = other.Acc2Name;
         NamesMigrated = other.NamesMigrated;
+        SettingsVersion = other.SettingsVersion;
         Zoom1 = other.Zoom1;
         Zoom2 = other.Zoom2;
         WinLeft = other.WinLeft;

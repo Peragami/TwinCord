@@ -91,9 +91,8 @@ public partial class MainWindow : Window
 
     /// <summary>ページ生成時に走るスクリプトを登録する。失敗はログと劣化判定(機能=page)へ反映する。</summary>
     private async Task RegisterDocumentScriptAsync(int n, Microsoft.Web.WebView2.Wpf.WebView2 view,
-        string script, Feature? feature)
+        string script, Feature? feature, string label)
     {
-        var label = feature == Feature.HotkeyPage ? "キー操作" : "通知";
         try
         {
             var scriptId = await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(script);
@@ -107,14 +106,17 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>「アプリをダウンロード」ボタンを今表示しているページへ反映する(再読み込み不要)。</summary>
-    private static async Task HideDownloadAsync(Microsoft.Web.WebView2.Wpf.WebView2 view)
+    /// <summary>「アプリをダウンロード」ボタンの表示/非表示を今のページへ反映する(再読み込み不要)。</summary>
+    private static async Task ApplyHideDownloadAsync(int n, Microsoft.Web.WebView2.Wpf.WebView2 view, bool hide)
     {
         try
         {
             var core = view.CoreWebView2;
             if (core is null) return;
-            await core.ExecuteScriptAsync(PageScripts.HideDownload);
+            var result = (await core.ExecuteScriptAsync(PageScripts.HideDownloadApply(hide)))?.Trim();
+            // 関数が無い(未注入・構文エラー)と null が返る。黙って効かなくなるのを避けるため記録する
+            if (result is null or "null")
+                Diagnostics.Log($"ダウンロードボタン反映(acc{n}): スクリプト未適用");
         }
         catch { }
     }
@@ -164,10 +166,13 @@ public partial class MainWindow : Window
         // リンクホバー時の左下URLプレビュー(ステータスバー)を出さない
         try { view.CoreWebView2.Settings.IsStatusBarEnabled = false; } catch { }
         SetZoom(view, zoom);
-        // ホットキーと通知フックは互いに独立なので、登録はまとめて投げる(直列待ちを減らす)
+        // ホットキー・通知フック・ダウンロードボタン隠しは互いに独立なので、登録はまとめて投げる(直列待ちを減らす)。
+        // ダウンロードボタン隠しは設定に関わらず登録し、表示/非表示はページごとにホストから指示する
+        // (設定OFFへ切り替えても解除できるようにするため)
         await Task.WhenAll(
-            RegisterDocumentScriptAsync(n, view, PageScripts.Hotkey, Feature.HotkeyPage),
-            RegisterDocumentScriptAsync(n, view, PageScripts.Notify, null));
+            RegisterDocumentScriptAsync(n, view, PageScripts.Hotkey, Feature.HotkeyPage, "キー操作"),
+            RegisterDocumentScriptAsync(n, view, PageScripts.Notify, null, "通知"),
+            RegisterDocumentScriptAsync(n, view, PageScripts.HideDownload, null, "ダウンロードボタン"));
         // 通知の受け取り経路を記録(原因調査用)
         try
         {
@@ -179,9 +184,8 @@ public partial class MainWindow : Window
                     _processReloadCount[n] = 0;
                     _reloadFailureShown[n] = false;
                     OnViewContentLoaded(n, view);
-                    // 設定ONでの再読み込み後、および起動後にONへ切り替えた場合の反映
-                    // (スクリプト側のフラグで二重実行は防ぐ)
-                    if (_settings.HideDownloadButton) await HideDownloadAsync(view);
+                    // 再読み込み後・起動後も設定どおりにする(ONの適用もOFFの解除も同じ経路で反映される)
+                    await ApplyHideDownloadAsync(n, view, _settings.HideDownloadButton);
                 }
                 else
                 {
@@ -229,14 +233,6 @@ public partial class MainWindow : Window
             };
         }
         catch (Exception ex) { Diagnostics.Log($"通知フック設定失敗(acc{n}): {ex.Message}"); }
-        if (_settings.HideDownloadButton)
-        {
-            try
-            {
-                await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(PageScripts.HideDownload);
-            }
-            catch { }
-        }
         view.CoreWebView2.ProcessFailed += (_, e) =>
         {
             var kind = e.ProcessFailedKind;

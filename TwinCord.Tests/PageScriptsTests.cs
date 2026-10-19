@@ -55,10 +55,31 @@ public class PageScriptsTests
     }
 
     [Fact]
-    public void HideDownload_CanBeRunAgainOnSamePage()
+    public void HideDownload_DefinesToggleableApplier()
     {
-        // 設定をONにしたとき今のページへ再実行するため、二重起動を防ぐフラグを持たせる
-        Assert.Contains("__tcHideDl", PageScripts.HideDownload);
+        // 設定のON/OFFをホストから渡して、同じ文書で適用/解除できるようにする
+        Assert.Contains("__tcHideDlApply", PageScripts.HideDownload);
+        Assert.Contains("MutationObserver", PageScripts.HideDownload);
+        Assert.Contains("disconnect", PageScripts.HideDownload);     // 解除時は監視を止める
+        Assert.Contains("removeProperty", PageScripts.HideDownload); // 隠した要素を元へ戻す
+        Assert.Contains("style.remove()", PageScripts.HideDownload); // 隠すCSSも外す
+    }
+
+    [Fact]
+    public void HideDownload_PrunesLargeContainersBeforeReadingText()
+    {
+        // DOM全体の走査負荷対策: 子要素が多い入れ物はtextContentを読む前に除外する
+        Assert.Contains("childElementCount", PageScripts.HideDownload);
+    }
+
+    [Fact]
+    public void HideDownloadApply_PassesBooleanToPageFunction()
+    {
+        Assert.Contains("__tcHideDlApply(true)", PageScripts.HideDownloadApply(true));
+        Assert.Contains("__tcHideDlApply(false)", PageScripts.HideDownloadApply(false));
+        // 未注入なら式全体がundefinedのままなのでホスト側へnullが返り「効いていない」ことを検知できる
+        Assert.Contains("window.__tcHideDlApply &&", PageScripts.HideDownloadApply(true));
+        Assert.Contains("return true", PageScripts.HideDownload);
     }
 
     [Fact]
