@@ -29,8 +29,8 @@ public class DiagnosticsTests
     {
         // Flushはキューが空でも「書き込み中」の行を待つ(終了時に最後の1行が残らない問題の防止)
         var marker = "flush-test-" + Guid.NewGuid().ToString("N");
-        Diagnostics.Log(marker);
-        Diagnostics.Flush();
+        Log.Write(marker);
+        Log.Flush();
 
         var dir = AppSettings.DataFolder();
         var files = Directory.Exists(dir)

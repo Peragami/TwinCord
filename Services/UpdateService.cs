@@ -44,7 +44,7 @@ public sealed class UpdateService
         }
         catch (Exception ex)
         {
-            Diagnostics.Log("起動時の更新確認に失敗: " + ex.Message);
+            Log.Write("起動時の更新確認に失敗: " + ex.Message);
         }
     }
 
@@ -83,7 +83,7 @@ public sealed class UpdateService
         }
         catch (Exception ex)
         {
-            Diagnostics.Log("更新確認に失敗: " + ex.Message);
+            Log.Write("更新確認に失敗: " + ex.Message);
             // 通信エラーでも無反応にしない(メニューを押したのに何も起きない状態を避ける)
             try { await onMessage("確認できませんでした(通信エラー)。", true); } catch { }
         }

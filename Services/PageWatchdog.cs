@@ -175,7 +175,7 @@ public sealed class PageWatchdog
             // DiscordのCDNだけを許可し、ローカルファイルや任意ホストへの誘導を防ぐ。
             if (!IsTrustedAvatarUrl(url))
             {
-                Diagnostics.Log($"アバターURLを拒否(acc{n}): {url}");
+                Log.Write($"アバターURLを拒否(acc{n}): {url}");
                 return;
             }
 
@@ -206,7 +206,7 @@ public sealed class PageWatchdog
             }
             catch (Exception ex)
             {
-                Diagnostics.Log($"アバター保存失敗(acc{n}): {ex.Message}");
+                Log.Write($"アバター保存失敗(acc{n}): {ex.Message}");
                 try { File.Delete(tmp); } catch { }
                 return;
             }
@@ -216,7 +216,7 @@ public sealed class PageWatchdog
         }
         catch (Exception ex)
         {
-            Diagnostics.Log($"アバター更新失敗(acc{n}): {ex.Message}");
+            Log.Write($"アバター更新失敗(acc{n}): {ex.Message}");
         }
     }
 
@@ -426,7 +426,7 @@ public sealed class PageWatchdog
             if (!_probeLogged[n])
             {
                 _probeLogged[n] = true;
-                Diagnostics.Log($"初回確認(acc{n}): バッジ={probe.Badge} 未読={probe.Unread} 通話判定={probe.Voice}");
+                Log.Write($"初回確認(acc{n}): バッジ={probe.Badge} 未読={probe.Unread} 通話判定={probe.Voice}");
             }
 
             bool changed = ApplyVoice(n, probe);
@@ -465,7 +465,7 @@ public sealed class PageWatchdog
         bool inVoice = probe.InVoice;
         if (n == 1 ? _inVoice1 == inVoice : _inVoice2 == inVoice) return false;
         if (n == 1) _inVoice1 = inVoice; else _inVoice2 = inVoice;
-        Diagnostics.Log($"Acc{n} 通話{(inVoice ? "開始" : "終了")}");
+        Log.Write($"Acc{n} 通話{(inVoice ? "開始" : "終了")}");
         RefreshMemoryLevels();
         return true;
     }

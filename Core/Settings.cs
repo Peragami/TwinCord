@@ -106,7 +106,7 @@ public class AppSettings
         catch (Exception ex)
         {
             // 破損していた場合は既定値で起動する(次の保存で上書きされる前に退避してログに残す)
-            Diagnostics.Log("設定の読み込みに失敗したため既定値で起動: " + ex.Message);
+            Log.Write("設定の読み込みに失敗したため既定値で起動: " + ex.Message);
             BackupCorruptFile(path);
             s = new AppSettings();
         }
@@ -188,7 +188,7 @@ public class AppSettings
         }
         catch (Exception ex)
         {
-            Diagnostics.Log("設定の保存に失敗: " + ex.Message);
+            Log.Write("設定の保存に失敗: " + ex.Message);
             try { File.Delete(FilePath() + ".tmp"); } catch { }
         }
     }

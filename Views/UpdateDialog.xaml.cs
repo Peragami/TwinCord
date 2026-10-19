@@ -76,7 +76,7 @@ public partial class UpdateDialog : Window
             await Updater.DownloadAsync(http, _info.AssetUrl, zip, progress, _cts.Token);
             StatusText.Text = "検証中…";
             if (string.IsNullOrEmpty(_info.Sha256))
-                Diagnostics.Log("更新: ハッシュが無いため改ざん検証をスキップ");
+                Log.Write("更新: ハッシュが無いため改ざん検証をスキップ");
             if (!Updater.VerifySha256(zip, _info.Sha256))
             {
                 StatusText.Text = "配布ファイルの検証に失敗しました。手動で更新してください。";
