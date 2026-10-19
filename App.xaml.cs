@@ -18,7 +18,7 @@ public partial class App : System.Windows.Application
         // 例外でプロセスが黙って消えないよう、最後の砦でログに残す
         DispatcherUnhandledException += (_, args) =>
         {
-            Diagnostics.Log("未処理例外(UI): " + args.Exception);
+            Log.Write("未処理例外(UI): " + args.Exception);
             if (!_errorReported)
             {
                 _errorReported = true;
@@ -33,10 +33,10 @@ public partial class App : System.Windows.Application
             args.Handled = true; // 常駐アプリのため落とさず継続する
         };
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
-            Diagnostics.Log("未処理例外(致命的): " + args.ExceptionObject);
+            Log.Write("未処理例外(致命的): " + args.ExceptionObject);
         TaskScheduler.UnobservedTaskException += (_, args) =>
         {
-            Diagnostics.Log("未処理タスク例外: " + args.Exception);
+            Log.Write("未処理タスク例外: " + args.Exception);
             args.SetObserved();
         };
 
@@ -112,11 +112,11 @@ public partial class App : System.Windows.Application
                 ? DataMigration.Migrate(data, legacy)
                 : "引き継がずに開始";
             DataMigration.MarkDone(data, result);
-            Diagnostics.Log("データ引き継ぎ: " + result);
+            Log.Write("データ引き継ぎ: " + result);
         }
         catch (Exception ex)
         {
-            Diagnostics.Log("データ引き継ぎに失敗: " + ex.Message);
+            Log.Write("データ引き継ぎに失敗: " + ex.Message);
         }
     }
 }

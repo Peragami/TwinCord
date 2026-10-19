@@ -30,7 +30,7 @@ public partial class MainWindow : Window
         bool sourceKnown = !string.IsNullOrEmpty(source);
         if (sourceKnown && !Discord.IsDiscordUri(source))
         {
-            Diagnostics.Log($"Webメッセージ破棄: source={source}");
+            Log.Write($"Webメッセージ破棄: source={source}");
             return;
         }
         string? msg;
@@ -41,7 +41,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Diagnostics.Log($"Webメッセージを無視(文字列以外): {ex.GetType().Name}");
+            Log.Write($"Webメッセージを無視(文字列以外): {ex.GetType().Name}");
             return;
         }
         if (msg == "switch:1") SwitchTo(1);
@@ -52,7 +52,7 @@ public partial class MainWindow : Window
             // 送信元が分からない通知は偽装の可能性があるため受理しない。
             if (!sourceKnown)
             {
-                Diagnostics.Log("Webメッセージ破棄: 送信元不明の通知");
+                Log.Write("Webメッセージ破棄: 送信元不明の通知");
                 return;
             }
             HandlePageNotify(sender, msg.Substring(7), viaPage: true);
@@ -83,7 +83,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             // JS側は常にJSONを送る。壊れたペイロードは表示しない。
-            Diagnostics.Log($"通知データ不正(acc{n}): {ex.Message}");
+            Log.Write($"通知データ不正(acc{n}): {ex.Message}");
             return false;
         }
         title = ToSingleLine(title, 80);
@@ -100,7 +100,7 @@ public partial class MainWindow : Window
 
         var text = string.IsNullOrEmpty(body) ? title : title + "\n" + body;
         // 本文そのものは履歴に残るため、ログは「本文N文字」に留める(診断ログが長く残るため)
-        Diagnostics.Log($"通知({acc}): {title} / 本文{body.Length}文字");
+        Log.Write($"通知({acc}): {title} / 本文{body.Length}文字");
         _history.Add(new NotificationRecord(DateTime.Now, n, acc, text));
         Dispatcher.BeginInvoke(() => ShowAccountBalloon(n, "TwinCord - " + acc, text, 8000));
         return true;
@@ -110,7 +110,7 @@ public partial class MainWindow : Window
     private void LogSuppressed(int n, string reason)
     {
         if (_suppressLogged.Add(n + ":" + reason))
-            Diagnostics.Log($"通知抑制(acc{n}): {reason}");
+            Log.Write($"通知抑制(acc{n}): {reason}");
     }
 
     /// <summary>タイトル用に制御文字を空白へ置換し、最大長で切る。</summary>
@@ -140,7 +140,7 @@ public partial class MainWindow : Window
     {
         var n = _current;
         var acc = AccName(n);
-        Diagnostics.Log("テスト通知送信");
+        Log.Write("テスト通知送信");
         ShowAccountBalloon(n, "TwinCord - " + acc, "テスト通知\nこれはテストです。クリックでこのアカウントを表示します。", 8000);
     }
 
@@ -173,7 +173,7 @@ public partial class MainWindow : Window
             UpdateGearAlert();
             var name = Diagnostics.DisplayName(key);
             var msg = $"「{name}」が動作しなくなりました。Discord側の更新により TwinCord v{Diagnostics.AppVersion()} が古くなった可能性があります。設定(歯車)→アプリについて→自己診断で詳細を確認してください。";
-            Diagnostics.Log("通知: " + msg.Replace(Environment.NewLine, " "));
+            Log.Write("通知: " + msg.Replace(Environment.NewLine, " "));
             if (_tray.IsVisible)
                 ShowBalloon("TwinCord", msg, WinForms.ToolTipIcon.Warning, 8000);
             else

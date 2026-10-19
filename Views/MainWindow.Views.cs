@@ -69,7 +69,7 @@ public partial class MainWindow : Window
         await view.EnsureCoreWebView2Async(env, options);
         var ctlMs = sw.ElapsedMilliseconds;
         await ConfigureViewAsync(n, view, zoom);
-        Diagnostics.Log($"acc{n} 初期化: 環境={envMs}ms コントローラ={ctlMs - envMs}ms 設定={sw.ElapsedMilliseconds - ctlMs}ms 累計={sw.ElapsedMilliseconds}ms");
+        Log.Write($"acc{n} 初期化: 環境={envMs}ms コントローラ={ctlMs - envMs}ms 設定={sw.ElapsedMilliseconds - ctlMs}ms 累計={sw.ElapsedMilliseconds}ms");
     }
 
     /// <summary>1枚目の初回表示完了を待つ。上限を超えたら諦めて2枚目を始める。</summary>
@@ -78,14 +78,14 @@ public partial class MainWindow : Window
         var t = _firstViewLoaded.Task;
         if (t.IsCompleted) return;
         if (await Task.WhenAny(t, Task.Delay(AppConstants.SecondViewWait)) != t)
-            Diagnostics.Log($"acc1の初回表示待ちがタイムアウト({AppConstants.SecondViewWait.TotalSeconds}秒)したためacc2を開始");
+            Log.Write($"acc1の初回表示待ちがタイムアウト({AppConstants.SecondViewWait.TotalSeconds}秒)したためacc2を開始");
     }
 
     /// <summary>1枚目の初回読み込みが失敗したときに、2枚目の開始条件を解く(待ち続けない)。</summary>
     private void FirstViewLoadFailed()
     {
         if (_firstViewLoaded.Task.IsCompleted) return;
-        Diagnostics.Log("acc1の初回読み込みに失敗したためacc2を開始");
+        Log.Write("acc1の初回読み込みに失敗したためacc2を開始");
         _firstViewLoaded.TrySetResult();
     }
 
@@ -97,12 +97,12 @@ public partial class MainWindow : Window
         {
             var scriptId = await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(script);
             if (feature is Feature f) _diag.ReportOk(f);
-            Diagnostics.Log($"{label}スクリプト登録(acc{n}): {scriptId}");
+            Log.Write($"{label}スクリプト登録(acc{n}): {scriptId}");
         }
         catch (Exception ex)
         {
             if (feature is Feature f) _diag.ReportFail(f);
-            Diagnostics.Log($"{label}スクリプト登録失敗(acc{n}): {ex.Message}");
+            Log.Write($"{label}スクリプト登録失敗(acc{n}): {ex.Message}");
         }
     }
 
@@ -116,7 +116,7 @@ public partial class MainWindow : Window
             var result = (await core.ExecuteScriptAsync(PageScripts.HideDownloadApply(hide)))?.Trim();
             // 関数が無い(未注入・構文エラー)と null が返る。黙って効かなくなるのを避けるため記録する
             if (result is null or "null")
-                Diagnostics.Log($"ダウンロードボタン反映(acc{n}): スクリプト未適用");
+                Log.Write($"ダウンロードボタン反映(acc{n}): スクリプト未適用");
         }
         catch { }
     }
@@ -151,7 +151,7 @@ public partial class MainWindow : Window
         bool cold = !Directory.Exists(Path.Combine(folder, "EBWebView"));
         var sw = Stopwatch.StartNew();
         var env = await CoreWebView2Environment.CreateAsync(null, folder);
-        Diagnostics.Log($"共有環境を作成: {sw.ElapsedMilliseconds}ms{(cold ? "(初回/キャッシュ無し)" : "")}");
+        Log.Write($"共有環境を作成: {sw.ElapsedMilliseconds}ms{(cold ? "(初回/キャッシュ無し)" : "")}");
         _sharedEnv = env;
         return env;
     }
@@ -197,9 +197,9 @@ public partial class MainWindow : Window
                 try
                 {
                     var r = await view.CoreWebView2.ExecuteScriptAsync(PageScripts.NotificationDiagnostic);
-                    Diagnostics.Log($"通知診断(acc{n}): {r}");
+                    Log.Write($"通知診断(acc{n}): {r}");
                 }
-                catch (Exception ex) { Diagnostics.Log($"通知診断(acc{n}) 失敗: {ex.Message}"); }
+                catch (Exception ex) { Log.Write($"通知診断(acc{n}) 失敗: {ex.Message}"); }
             };
             view.CoreWebView2.NotificationReceived += (_, e) =>
             {
@@ -210,18 +210,18 @@ public partial class MainWindow : Window
                     var title = e.Notification.Title ?? "";
                     var body = e.Notification.Body ?? "";
                     e.Handled = true;
-                    Diagnostics.Log($"通知ネイティブ(acc{n}): {title} / 本文{body.Length}文字");
+                    Log.Write($"通知ネイティブ(acc{n}): {title} / 本文{body.Length}文字");
                     var shown = HandlePageNotify(view, JsonSerializer.Serialize(new { title, body }), viaPage: false);
                     // 実際にバルーンを出したときだけ「表示した」とページへ返す
                     if (shown) { try { e.Notification.ReportShown(); } catch { } }
                 }
-                catch (Exception ex) { Diagnostics.Log($"通知ネイティブ処理失敗(acc{n}): {ex.Message}"); }
+                catch (Exception ex) { Log.Write($"通知ネイティブ処理失敗(acc{n}): {ex.Message}"); }
             };
             view.CoreWebView2.PermissionRequested += (_, e) =>
             {
                 try
                 {
-                    Diagnostics.Log($"権限要求(acc{n}): {e.PermissionKind} {e.Uri}");
+                    Log.Write($"権限要求(acc{n}): {e.PermissionKind} {e.Uri}");
                     if (e.PermissionKind == CoreWebView2PermissionKind.Notifications
                         && Discord.IsDiscordUri(e.Uri))
                     {
@@ -232,11 +232,11 @@ public partial class MainWindow : Window
                 catch { }
             };
         }
-        catch (Exception ex) { Diagnostics.Log($"通知フック設定失敗(acc{n}): {ex.Message}"); }
+        catch (Exception ex) { Log.Write($"通知フック設定失敗(acc{n}): {ex.Message}"); }
         view.CoreWebView2.ProcessFailed += (_, e) =>
         {
             var kind = e.ProcessFailedKind;
-            Diagnostics.Log($"WebView2プロセス異常(acc{n}): {kind} reason={e.Reason} exit={e.ExitCode} desc={e.ProcessDescription}");
+            Log.Write($"WebView2プロセス異常(acc{n}): {kind} reason={e.Reason} exit={e.ExitCode} desc={e.ProcessDescription}");
             if (kind == CoreWebView2ProcessFailedKind.BrowserProcessExited)
             {
                 OnBrowserProcessExited(n);
@@ -260,11 +260,11 @@ public partial class MainWindow : Window
             e.Handled = true;
             if (!TryGetExternalUri(uri, out var target))
             {
-                Diagnostics.Log($"外部リンクを無視(未許可スキーム): {uri}");
+                Log.Write($"外部リンクを無視(未許可スキーム): {uri}");
                 return;
             }
             try { Process.Start(new ProcessStartInfo(target!.AbsoluteUri) { UseShellExecute = true }); }
-            catch (Exception ex) { Diagnostics.Log($"外部リンク起動失敗: {ex.Message}"); }
+            catch (Exception ex) { Log.Write($"外部リンク起動失敗: {ex.Message}"); }
         };
         view.CoreWebView2.Navigate(Discord.HomeUrl);
     }
@@ -283,7 +283,7 @@ public partial class MainWindow : Window
         if (!Discord.IsDiscordUri(source)) return;
 
         _viewContentLoaded[n] = true;
-        Diagnostics.Log($"acc{n} 初回表示完了: 起動から{ElapsedMs()}ms ({source})");
+        Log.Write($"acc{n} 初回表示完了: 起動から{ElapsedMs()}ms ({source})");
         _watchdog?.SetViewLoaded(n);
         if (n == 1) _firstViewLoaded.TrySetResult();
     }
@@ -309,7 +309,7 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                Diagnostics.Log($"ブラウザプロセス終了通知の表示に失敗(acc{acc}): {ex.Message}");
+                Log.Write($"ブラウザプロセス終了通知の表示に失敗(acc{acc}): {ex.Message}");
             }
         });
     }
@@ -331,7 +331,7 @@ public partial class MainWindow : Window
             if (_reloadFailureShown[acc]) return;
             _reloadFailureShown[acc] = true;
             var msg = $"アカウント{acc}のページが繰り返し異常終了しました({kind})。自動再読み込みを停止しました。TwinCordを再起動してください。";
-            Diagnostics.Log(msg);
+            Log.Write(msg);
             if (_tray.IsVisible)
             {
                 ShowBalloon("TwinCord", msg, WinForms.ToolTipIcon.Warning, 8000);
@@ -344,7 +344,7 @@ public partial class MainWindow : Window
         }
 
         try { view.CoreWebView2?.Reload(); }
-        catch (Exception ex) { Diagnostics.Log($"プロセス異常後の再読み込み失敗(acc{acc}): {ex.Message}"); }
+        catch (Exception ex) { Log.Write($"プロセス異常後の再読み込み失敗(acc{acc}): {ex.Message}"); }
     }
 
     /// <summary>外部ブラウザで開いてよいURLか。任意のプロトコルハンドラ起動を防ぐ。</summary>

@@ -144,7 +144,7 @@ public partial class MainWindow : Window
 
     private void ReportHotkeyFailure(string keys)
     {
-        Diagnostics.Log($"グローバルホットキー登録失敗: {keys} (他アプリが使用中の可能性)");
+        Log.Write($"グローバルホットキー登録失敗: {keys} (他アプリが使用中の可能性)");
         _diag.ReportFail(Feature.HotkeyGlobal);
     }
 
@@ -177,7 +177,7 @@ public partial class MainWindow : Window
     /// <summary>起動処理。順序は起動時間とメモリ抑制の前提に関わるため変えない。</summary>
     private async Task StartAsync()
     {
-        Diagnostics.Log($"TwinCord v{Diagnostics.AppVersion()} 起動");
+        Log.Write($"TwinCord v{Diagnostics.AppVersion()} 起動");
         RefreshRail();
         _history.Load();
         ApplySettings();
@@ -212,7 +212,7 @@ public partial class MainWindow : Window
     {
         // 常駐が目的なので完了は待たず、失敗だけログに残す
         _ = EnsureViewAsync(2).ContinueWith(
-            t => Diagnostics.Log("acc2の初期化に失敗: " + t.Exception?.GetBaseException().Message),
+            t => Log.Write("acc2の初期化に失敗: " + t.Exception?.GetBaseException().Message),
             CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
     }
 
@@ -293,7 +293,7 @@ public partial class MainWindow : Window
         _tray.Dispose();
         // 書き込み待ちのログ・通知履歴を残す
         _history.Flush();
-        Diagnostics.Flush();
+        Log.Flush();
         // トレイ格納中に開いた履歴ウィンドウ等が残っていても確実に終了させる。
         // 既定のShutdownMode(OnLastWindowClose)だと、他のウィンドウが開いたままだと
         // プロセスが生き残り、トレイも無いため操作不能になる。
@@ -362,7 +362,7 @@ public partial class MainWindow : Window
         sb.Append("劣化中の機能: ");
         sb.AppendLine(bad.Count == 0 ? "なし" : string.Join(", ", bad.Select(Diagnostics.DisplayName)));
         var report = sb.ToString();
-        Diagnostics.Log("自己診断:\n" + report);
+        Log.Write("自己診断:\n" + report);
         return report;
     }
 

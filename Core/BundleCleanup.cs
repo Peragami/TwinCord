@@ -33,7 +33,7 @@ public static class BundleCleanup
         if (current is null) return; // 展開方式で動いていない → 何もしない
         var deleted = DeleteOthers(root, current);
         if (deleted > 0)
-            Diagnostics.Log($"展開フォルダの掃除: {deleted}件削除 (残りは実行中の {Path.GetFileName(current)})");
+            Log.Write($"展開フォルダの掃除: {deleted}件削除 (残りは実行中の {Path.GetFileName(current)})");
     }
 
     /// <summary>

@@ -35,7 +35,7 @@ public static class Updater
     public static async Task<UpdateInfo?> FetchLatestAsync(
         HttpClient http, CancellationToken ct = default, Action<string>? log = null)
     {
-        log ??= Diagnostics.Log;
+        log ??= Log.Write;
         using var req = new HttpRequestMessage(HttpMethod.Get, RepoLatestUrl);
         req.Headers.UserAgent.ParseAdd("TwinCord");
         using var res = await http.SendAsync(req, ct);

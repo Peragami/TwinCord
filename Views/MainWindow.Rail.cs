@@ -83,7 +83,7 @@ public partial class MainWindow : Window
             var c = view.CoreWebView2;
             if (c is null) return;
             c.IsMuted = !c.IsMuted;
-            Diagnostics.Log($"{AccName(n)} ミュート{(c.IsMuted ? "ON" : "OFF")}");
+            Log.Write($"{AccName(n)} ミュート{(c.IsMuted ? "ON" : "OFF")}");
             RefreshRail();
         }
         catch { }
