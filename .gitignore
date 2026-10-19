@@ -2,5 +2,8 @@ bin/
 obj/
 publish/
 publish-selfcontained/
+publish-portable/
+publish-zip/
+TwinCord.zip
 .vs/
 *.user

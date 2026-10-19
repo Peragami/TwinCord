@@ -52,6 +52,19 @@ public partial class App : System.Windows.Application
             Shutdown();
             return;
         }
+        // ポータブル形式: データはexeと同じフォルダのdata配下に置く。書けない場所では起動しない
+        var dataError = AppSettings.PrepareDataFolder();
+        if (dataError is not null)
+        {
+            System.Windows.MessageBox.Show(
+                "データを保存できません。デスクトップなど書き込みできる場所へフォルダごと移動してから、" +
+                "TwinCord.exeを起動してください。\n\n対象: " + AppSettings.DataFolder() + "\n理由: " + dataError,
+                "TwinCord", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown();
+            return;
+        }
+        // 旧バージョン(1.10.xまで)のデータがあれば、一度だけ引き継ぎを確認する
+        OfferDataMigration();
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, AppConstants.ShowWindowEvent);
         // 単一exe(展開方式)はバージョンごとに%TEMP%へ展開するため、古い展開フォルダを掃除する
         BundleCleanup.Start();
@@ -74,5 +87,34 @@ public partial class App : System.Windows.Application
         { IsBackground = true };
         watcher.Start();
         base.OnStartup(e);
+    }
+
+    /// <summary>
+    /// 旧バージョンのデータ(%LOCALAPPDATA%\TwinCord)をdataフォルダへ引き継ぐか一度だけ確認する。
+    /// 開発ビルドでは作業中のデータを動かさないよう何もしない。
+    /// </summary>
+    private static void OfferDataMigration()
+    {
+        if (Diagnostics.IsDevBuild()) return;
+        var data = AppSettings.DataFolder();
+        var legacy = DataMigration.LegacyFolder();
+        if (!DataMigration.ShouldOffer(data, legacy)) return;
+        try
+        {
+            var res = System.Windows.MessageBox.Show(
+                "以前のバージョンのデータが見つかりました。設定とログイン情報をこのフォルダへ引き継ぎますか？\n\n" +
+                "元: " + legacy + "\n先: " + data + "\n\n" +
+                "「いいえ」を選ぶと引き継がずに新しく始めます(後から手動でコピーすることもできます)。",
+                "TwinCord データの引き継ぎ", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            var result = res == MessageBoxResult.Yes
+                ? DataMigration.Migrate(data, legacy)
+                : "引き継がずに開始";
+            DataMigration.MarkDone(data, result);
+            Diagnostics.Log("データ引き継ぎ: " + result);
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.Log("データ引き継ぎに失敗: " + ex.Message);
+        }
     }
 }

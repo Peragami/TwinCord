@@ -11,6 +11,9 @@ public sealed class UpdateService
     private readonly Func<string> _currentVersion;
     private readonly Func<bool> _isExiting;
 
+    /// <summary>更新を自動適用できる配置か(フォルダ構成の配布物で、開発ビルドでない)。</summary>
+    private static readonly bool AutoUpdateSupported = !Diagnostics.IsDevBuild() && Updater.IsFolderLayout();
+
     public UpdateService(HttpClient http, Func<string> currentVersion, Func<bool> isExiting)
     {
         _http = http;
@@ -18,9 +21,10 @@ public sealed class UpdateService
         _isExiting = isExiting;
     }
 
-    /// <summary>新版があれば情報を返す。なければnull。</summary>
+    /// <summary>新版があれば情報を返す。なければnull。開発ビルドや自動更新できない形式では通知しない。</summary>
     public async Task<UpdateInfo?> GetNewerAsync()
     {
+        if (!AutoUpdateSupported) return null;
         var info = await Updater.FetchLatestAsync(_http);
         if (info is null || string.IsNullOrEmpty(info.AssetUrl)) return null;
         if (!Updater.IsNewer(_currentVersion(), info.Version)) return null;
@@ -57,6 +61,16 @@ public sealed class UpdateService
             if (!Updater.IsNewer(_currentVersion(), info.Version))
             {
                 await onMessage($"最新です(v{_currentVersion()})。", false);
+                return;
+            }
+            if (!AutoUpdateSupported)
+            {
+                // 開発ビルド・単一exe形式では入れ替えを行わない(作業中のファイルを壊さないため)
+                await onMessage(
+                    Diagnostics.IsDevBuild()
+                        ? $"新しいバージョン {info.Tag} があります(開発ビルドのため自動更新は行いません)。"
+                        : $"新しいバージョン {info.Tag} があります。この形式では自動更新できないため手動で更新してください。",
+                    true);
                 return;
             }
             if (string.IsNullOrEmpty(info.AssetUrl))

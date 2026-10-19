@@ -50,6 +50,26 @@ public class Diagnostics
         return string.IsNullOrEmpty(path) ? "不明" : path;
     }
 
+    /// <summary>
+    /// binから起動している開発ビルドか(発行物には付かないruntimeconfig.dev.jsonの有無で判定)。
+    /// 開発ビルドでは更新の自動適用と旧データの引き継ぎを行わない(作業中のデータを壊さないため)。
+    /// </summary>
+    public static bool IsDevBuild() => IsDevBuildIn(ExePath());
+
+    internal static bool IsDevBuildIn(string? exePath)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(exePath ?? "");
+            return !string.IsNullOrEmpty(dir)
+                && File.Exists(Path.Combine(dir, AppConstants.AppName + ".runtimeconfig.dev.json"));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public void ReportOk(Feature key)
     {
         lock (_lock) { _failures[key] = 0; }

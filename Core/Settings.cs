@@ -42,12 +42,46 @@ public class AppSettings
     };
 
     public static string FilePath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        AppConstants.AppName, AppConstants.SettingsFileName);
+        DataFolder(), AppConstants.SettingsFileName);
 
-    public static string DataFolder() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "TwinCord");
+    /// <summary>
+    /// 実行中のexeがあるフォルダ。単一ファイル発行でもEnvironment.ProcessPathは実体のexeを返す
+    /// (Assembly.Locationは空になるため使わない)。
+    /// </summary>
+    public static string AppDir()
+    {
+        var exe = Environment.ProcessPath;
+        var dir = string.IsNullOrEmpty(exe) ? null : Path.GetDirectoryName(exe);
+        return string.IsNullOrEmpty(dir) ? AppContext.BaseDirectory : dir;
+    }
+
+    /// <summary>
+    /// データ(設定・ログ・通知履歴・ログイン情報)の保存先。exeと同じフォルダ配下のdataに置く
+    /// ポータブル形式で、フォルダごと削除すればアプリとデータが完全に消える。
+    /// </summary>
+    public static string DataFolder() => Path.Combine(AppDir(), AppConstants.DataFolderName);
+
+    /// <summary>
+    /// データフォルダを用意して書き込めるか確かめる。Program Filesなど書き込めない場所に
+    /// 置かれた場合はエラーメッセージを返す(起動前に知らせるため、起動処理の最初に呼ぶ)。
+    /// </summary>
+    public static string? PrepareDataFolder()
+    {
+        try
+        {
+            var dir = DataFolder();
+            Directory.CreateDirectory(dir);
+            // 実際に書けるか確かめる(権限・読み取り専用・容量不足などを早期に検出)
+            var probe = Path.Combine(dir, ".write-test");
+            File.WriteAllText(probe, "");
+            File.Delete(probe);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+    }
 
     public static AppSettings Load()
     {

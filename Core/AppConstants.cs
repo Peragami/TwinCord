@@ -17,6 +17,8 @@ public static class AppConstants
     public const string RunKeyName = "TwinCord";
 
     // データフォルダ内の名前
+    public const string DataFolderName = "data";
+    public const string ModsFolderName = "mods";
     public const string SettingsFileName = "settings.json";
     public const string LegacyNamesFileName = "names.txt";
     public const string HistoryFileName = "notifications.json";
