@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
-    <Version>1.10.2</Version>
+    <Version>1.10.3</Version>
     <ApplicationIcon>TwinCord.ico</ApplicationIcon>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
@@ -16,6 +16,12 @@
        圧縮は自己完結発行でのみサポートされる(NETSDK1176)ため、自己完結のときだけ有効にする -->
   <PropertyGroup Condition="'$(PublishSingleFile)' == 'true' and '$(SelfContained)' == 'true'">
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- 同梱物をexe内に保持せず、%TEMP%\.net\TwinCord\<ハッシュ>\ へ展開してから読み込む。
+         圧縮した単一exeのままだと読み込んだアセンブリがプライベートメモリに載り続け、
+         ホスト側(WPF)のメモリが170MB前後まで膨らむ(展開方式なら90MB前後)。
+         代償は初回起動時だけ展開の分(数秒)遅くなること。古い展開フォルダは
+         起動時にBundleCleanupが削除する。exeのサイズはほぼ変わらない -->
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>

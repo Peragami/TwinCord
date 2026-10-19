@@ -53,6 +53,8 @@ public partial class App : System.Windows.Application
             return;
         }
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, AppConstants.ShowWindowEvent);
+        // 単一exe(展開方式)はバージョンごとに%TEMP%へ展開するため、古い展開フォルダを掃除する
+        BundleCleanup.Start();
         var watcher = new Thread(() =>
         {
             while (true)
