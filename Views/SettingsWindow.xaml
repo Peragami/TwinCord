@@ -217,7 +217,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Margin="0,0,12,0">
                             <TextBlock Text="ダウンロードボタンを隠す" Style="{StaticResource RowLabel}" />
-                            <TextBlock Text="サーバーリストの「アプリをダウンロード」を隠します(再読み込み後に反映)" Style="{StaticResource RowHint}" />
+                            <TextBlock Text="サーバーリストの「アプリをダウンロード」を隠します(すぐに反映)" Style="{StaticResource RowHint}" />
                         </StackPanel>
                         <CheckBox Grid.Column="1" x:Name="HideDlBox" Style="{StaticResource DiscordToggle}" />
                     </Grid>

@@ -255,6 +255,17 @@ public partial class MainWindow : Window
         }
         catch { }
         _tray.Dispose();
+        // 書き込み待ちのログ・通知履歴を残す
+        _history.Flush();
+        Diagnostics.Flush();
+        // トレイ格納中に開いた履歴ウィンドウ等が残っていても確実に終了させる。
+        // 既定のShutdownMode(OnLastWindowClose)だと、他のウィンドウが開いたままだと
+        // プロセスが生き残り、トレイも無いため操作不能になる。
+        Dispatcher.BeginInvoke(() =>
+        {
+            try { System.Windows.Application.Current?.Shutdown(); }
+            catch { }
+        });
         base.OnClosed(e);
     }
 

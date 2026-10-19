@@ -36,6 +36,8 @@ public sealed class PageWatchdog
     // 初回読み込みが終わったアカウントだけメモリ抑制(Low)の対象にする
     private bool _loaded1;
     private bool _loaded2;
+    // バッジ/通話の初回確認結果をログに残す(セッション中1回)
+    private readonly bool[] _probeLogged = new bool[3];
     private string _avatarUrl1 = "";
     private string _avatarUrl2 = "";
     private DispatcherTimer? _badgeTimer;
@@ -44,6 +46,11 @@ public sealed class PageWatchdog
     private bool _badgeBusy;
     private bool _healthBusy;
     private bool _avatarBusy;
+    // 変化が無いときはポーリング間隔を伸ばす(常駐時のCPU/バッテリー節約)
+    private int _unchangedPolls;
+    private static readonly TimeSpan FastPoll = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan SlowPoll = TimeSpan.FromSeconds(10);
+    private const int SlowAfterPolls = 6; // 30秒変化が無ければ10秒間隔
 
     public PageWatchdog(AccountSlot acc1, AccountSlot acc2, Func<AppSettings> settings,
         Diagnostics diag, Func<int> current)
@@ -64,10 +71,11 @@ public sealed class PageWatchdog
             var slot = Slot(n);
             var core = slot.View.CoreWebView2;
             if (core is null) return "実行失敗";
-            var raw = await PageScripts.EvalAsync(core, PageScripts.Badge);
+            // 常駐中の判定と同じスクリプトを使う(自己診断と実際の動作を揃える)
+            var raw = await PageScripts.EvalAsync(core, PageScripts.Probe(includeUnread: false));
             if (raw is null) return "実行失敗";
-            if (!int.TryParse(raw, out var count)) return "判定不能";
-            return count < 0 ? "スクリプト異常" : count.ToString();
+            if (!PageScripts.TryParseProbe(raw, out var probe)) return "スクリプト異常";
+            return probe.Badge.ToString();
         }
         catch
         {
@@ -120,6 +128,7 @@ public sealed class PageWatchdog
     {
         if (n == 1) _loaded1 = true; else _loaded2 = true;
         RefreshMemoryLevels();
+        WakeUp(); // 表示直後はバッジ/通話を早めに反映する
     }
 
     public static void SetMemoryLevel(WpfWebView2 view, bool low)
@@ -247,8 +256,10 @@ public sealed class PageWatchdog
         return ms.ToArray();
     }
 
-    // アバター画像はデコード済みのBitmapSourceを使い回す(毎回のデコードを避ける)
+    // アバター画像はデコード済みのBitmapSourceとImageコントロールを使い回す
+    // (ボタンをクリックするたびにImageを作り直すとGCと再描画が発生する)
     private readonly Dictionary<int, (DateTime Stamp, BitmapSource Bmp)> _iconCache = new();
+    private readonly Dictionary<int, System.Windows.Controls.Image> _iconImages = new();
 
     private void SetAccountIcon(int n)
     {
@@ -272,15 +283,19 @@ public sealed class PageWatchdog
                     cached = (stamp, bmp);
                     _iconCache[n] = cached;
                 }
-                var img = new System.Windows.Controls.Image
+                if (!_iconImages.TryGetValue(n, out var img))
                 {
-                    Width = 40,
-                    Height = 40,
-                    Stretch = System.Windows.Media.Stretch.UniformToFill,
-                    Source = cached.Bmp,
-                };
-                img.Clip = new System.Windows.Media.EllipseGeometry(new System.Windows.Point(20, 20), 20, 20);
-                btn.Content = img;
+                    img = new System.Windows.Controls.Image
+                    {
+                        Width = 40,
+                        Height = 40,
+                        Stretch = System.Windows.Media.Stretch.UniformToFill,
+                    };
+                    img.Clip = new System.Windows.Media.EllipseGeometry(new System.Windows.Point(20, 20), 20, 20);
+                    _iconImages[n] = img;
+                }
+                if (!ReferenceEquals(img.Source, cached.Bmp)) img.Source = cached.Bmp;
+                if (!ReferenceEquals(btn.Content, img)) btn.Content = img;
                 return;
             }
             catch { }
@@ -301,30 +316,71 @@ public sealed class PageWatchdog
     {
         if (_badgeBusy) return;
         _badgeBusy = true;
+        bool changed = false;
         try
         {
             var settings = _settings();
             int current = _current();
-            if (settings.UnreadBadge)
-            {
-                if (current != 2 && _acc2.IsReady())
-                    await UpdateBadgeAsync(2);
-                if (current != 1 && _acc1.IsReady())
-                    await UpdateBadgeAsync(1);
-            }
-            else
-            {
-                _acc1.Badge.Visibility = System.Windows.Visibility.Collapsed;
-                _acc2.Badge.Visibility = System.Windows.Visibility.Collapsed;
-            }
-            // バッジOFFでも通話検出とズーム同期は継続する
-            if (_acc1.IsReady()) await UpdateVoiceAsync(1);
-            if (_acc2.IsReady()) await UpdateVoiceAsync(2);
+            bool includeUnread = settings.CountUnreadChannels;
+            bool showBadges = settings.UnreadBadge;
+
+            // 非表示アカウント: バッジ(+通話)。表示アカウント: 通話のみ(バッジは見えない)
+            if (current != 2 && _acc2.IsReady())
+                changed |= await PollAsync(2, includeUnread, showBadges);
+            if (current != 1 && _acc1.IsReady())
+                changed |= await PollAsync(1, includeUnread, showBadges);
+            if (current == 1 && _acc1.IsReady())
+                changed |= await PollAsync(1, includeUnread, updateBadge: false);
+            else if (current == 2 && _acc2.IsReady())
+                changed |= await PollAsync(2, includeUnread, updateBadge: false);
+
+            // バッジOFFへ切り替えた直後も、バッジと通話検出とズーム同期は継続する
+            if (!showBadges) changed |= HideBadges();
+
             SyncZoom(1);
             SyncZoom(2);
         }
         catch { }
-        finally { _badgeBusy = false; }
+        finally
+        {
+            _badgeBusy = false;
+            AdaptInterval(changed);
+        }
+    }
+
+    /// <summary>次のポーリングをすぐ(5秒間隔)に戻す。アカウント切替や初回読み込み完了時に呼ぶ。</summary>
+    public void WakeUp()
+    {
+        _unchangedPolls = 0;
+        if (_badgeTimer is not null) _badgeTimer.Interval = FastPoll;
+    }
+
+    private void AdaptInterval(bool changed)
+    {
+        if (_badgeTimer is null) return;
+        if (changed)
+        {
+            _unchangedPolls = 0;
+        }
+        else if (_unchangedPolls < SlowAfterPolls)
+        {
+            _unchangedPolls++;
+        }
+        var want = _unchangedPolls >= SlowAfterPolls ? SlowPoll : FastPoll;
+        if (_badgeTimer.Interval != want) _badgeTimer.Interval = want;
+    }
+
+    /// <summary>バッジを両アカウント分まとめて消す(設定OFF時)。</summary>
+    private bool HideBadges()
+    {
+        bool changed = false;
+        foreach (var slot in new[] { _acc1, _acc2 })
+        {
+            if (slot.Badge.Visibility == System.Windows.Visibility.Collapsed) continue;
+            slot.Badge.Visibility = System.Windows.Visibility.Collapsed;
+            changed = true;
+        }
+        return changed;
     }
 
     // ページ側のCtrl+ホイール変更を取込んで保存
@@ -348,73 +404,70 @@ public sealed class PageWatchdog
         catch { }
     }
 
-    private async Task UpdateVoiceAsync(int n)
-    {
-        try
-        {
-            var slot = Slot(n);
-            var core = slot.View.CoreWebView2;
-            if (core is null) return;
-            var raw = await PageScripts.EvalAsync(core, PageScripts.Voice);
-            if (raw is null) return; // タイムアウト等は状態を維持
-            var v = raw.Trim('"');
-            bool? voice = v == "1" ? true : v == "0" ? false : null;
-            // 判定不能(ロケール未対応・DOM変更)は状態を維持して安全側に倒す(通話中に絞らない)
-            if (voice is null) return;
-            bool inVoice = voice.Value;
-            if (n == 1 ? _inVoice1 == inVoice : _inVoice2 == inVoice) return;
-            if (n == 1) _inVoice1 = inVoice; else _inVoice2 = inVoice;
-            Diagnostics.Log($"Acc{n} 通話{(inVoice ? "開始" : "終了")}");
-            RefreshMemoryLevels();
-        }
-        catch { }
-    }
-
-    private async Task UpdateBadgeAsync(int n)
+    /// <summary>
+    /// 1回のスクリプト実行でバッジ・未読・通話をまとめて取得する。UIが変わったらtrue。
+    /// updateBadge=falseのときも通話判定は更新する(表示中アカウント用)。
+    /// </summary>
+    private async Task<bool> PollAsync(int n, bool includeUnread, bool updateBadge)
     {
         var slot = Slot(n);
         try
         {
             var core = slot.View.CoreWebView2;
-            if (core is null) return;
-            var raw = await PageScripts.EvalAsync(core, PageScripts.Badge);
-            if (raw is null)
+            if (core is null) return false;
+            var raw = await PageScripts.EvalAsync(core, PageScripts.Probe(includeUnread));
+            if (!PageScripts.TryParseProbe(raw, out var probe))
             {
-                _diag.ReportFail(Feature.Badge); // 応答なし(ハング/タイムアウト)
-                return;
+                _diag.ReportFail(Feature.Badge); // 応答なし/スクリプト異常=Discord側の構造変化の疑い
+                return false;
             }
-            if (int.TryParse(raw, out var count))
+            _diag.ReportOk(Feature.Badge);
+            // 初回だけ結果を残す(Discord側のDOM変更で判定不能になったときに気づけるように)
+            if (!_probeLogged[n])
             {
-                if (count < 0)
+                _probeLogged[n] = true;
+                Diagnostics.Log($"初回確認(acc{n}): バッジ={probe.Badge} 未読={probe.Unread} 通話判定={probe.Voice}");
+            }
+
+            bool changed = ApplyVoice(n, probe);
+            if (!updateBadge) return changed;
+
+            int count = probe.Badge;
+            if (probe.Unread > 0) count += probe.Unread;
+            if (count > 0)
+            {
+                var text = count > 99 ? "99+" : count.ToString();
+                if (slot.BadgeText.Text != text || slot.Badge.Visibility != System.Windows.Visibility.Visible)
                 {
-                    _diag.ReportFail(Feature.Badge); // スクリプト内部異常=Discord側の構造変化の疑い
-                    return;
-                }
-                if (_settings().CountUnreadChannels)
-                {
-                    try
-                    {
-                        var uraw = await PageScripts.EvalAsync(core, PageScripts.Unread);
-                        if (uraw is not null && int.TryParse(uraw, out var u) && u > 0) count += u;
-                    }
-                    catch { }
-                }
-                _diag.ReportOk(Feature.Badge);
-                if (count > 0)
-                {
-                    slot.BadgeText.Text = count > 99 ? "99+" : count.ToString();
+                    slot.BadgeText.Text = text;
                     slot.Badge.Visibility = System.Windows.Visibility.Visible;
-                }
-                else
-                {
-                    slot.Badge.Visibility = System.Windows.Visibility.Collapsed;
+                    changed = true;
                 }
             }
+            else if (slot.Badge.Visibility != System.Windows.Visibility.Collapsed)
+            {
+                slot.Badge.Visibility = System.Windows.Visibility.Collapsed;
+                changed = true;
+            }
+            return changed;
         }
         catch
         {
             _diag.ReportFail(Feature.Badge);
+            return false;
         }
+    }
+
+    private bool ApplyVoice(int n, in PageScripts.ProbeResult probe)
+    {
+        // 判定不能(ロケール未対応・DOM変更)は状態を維持して安全側に倒す(通話中に絞らない)
+        if (!probe.VoiceKnown) return false;
+        bool inVoice = probe.InVoice;
+        if (n == 1 ? _inVoice1 == inVoice : _inVoice2 == inVoice) return false;
+        if (n == 1) _inVoice1 = inVoice; else _inVoice2 = inVoice;
+        Diagnostics.Log($"Acc{n} 通話{(inVoice ? "開始" : "終了")}");
+        RefreshMemoryLevels();
+        return true;
     }
 
     private async void HealthTimer_Tick(object? sender, EventArgs e)

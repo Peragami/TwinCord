@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 
@@ -5,27 +6,44 @@ namespace TwinCord.Services;
 
 /// <summary>
 /// 通知履歴の保持(最新30件)と永続化。
+/// 保存は専用のバックグラウンド処理にまとめて行う(通知のたびにUIスレッドで
+/// ファイルI/Oをすると操作が引っかかるため)。書き込みの順序は1本の処理で保証し、
+/// 連続追加は最新の内容1回にまとめる。
 /// </summary>
 public sealed class HistoryStore
 {
+    private readonly object _gate = new();
     private readonly List<NotificationRecord> _items = new();
     private const int MaxItems = 30;
     private readonly string _folder;
+    private bool _dirty;
+    private bool _writerRunning;
 
     /// <summary>folderを省略すると通常のデータフォルダを使う(テストでは一時フォルダを渡せる)。</summary>
     public HistoryStore(string? folder = null) => _folder = folder ?? AppSettings.DataFolder();
 
-    public IReadOnlyList<NotificationRecord> Items => _items;
+    /// <summary>現在の履歴(コピー)。呼び出し側で自由に使える。</summary>
+    public IReadOnlyList<NotificationRecord> Items
+    {
+        get
+        {
+            lock (_gate) return new List<NotificationRecord>(_items);
+        }
+    }
 
     public void Add(NotificationRecord item)
     {
-        _items.Insert(0, item);
-        while (_items.Count > MaxItems) _items.RemoveAt(_items.Count - 1);
-        Save();
+        lock (_gate)
+        {
+            _items.Insert(0, item);
+            while (_items.Count > MaxItems) _items.RemoveAt(_items.Count - 1);
+        }
+        RequestSave();
     }
 
     public void Load()
     {
+        List<NotificationRecord> loaded = new();
         try
         {
             var p = FilePath();
@@ -33,24 +51,80 @@ public sealed class HistoryStore
             // 旧バージョンや手編集でnull要素・null文字列が入っていても表示側で落ちないようにする
             var list = JsonSerializer.Deserialize<List<NotificationRecord?>>(File.ReadAllText(p));
             if (list is null) return;
-            _items.Clear();
             foreach (var item in list)
             {
                 if (item is null) continue;
-                _items.Add(item with
+                loaded.Add(item with
                 {
                     AccountName = string.IsNullOrWhiteSpace(item.AccountName)
                         ? $"Acc{item.Account}"
                         : item.AccountName,
                     Text = item.Text ?? "",
                 });
-                if (_items.Count >= MaxItems) break;
+                if (loaded.Count >= MaxItems) break;
             }
         }
-        catch { }
+        catch
+        {
+            return; // 壊れたファイルでは現在の内容を維持する
+        }
+        lock (_gate)
+        {
+            _items.Clear();
+            _items.AddRange(loaded);
+        }
     }
 
-    private void Save()
+    /// <summary>書き込み待ちの分が終わるまで待つ(終了時に呼ぶ)。</summary>
+    public void Flush(int timeoutMs = 2000)
+    {
+        var sw = Stopwatch.StartNew();
+        while (true)
+        {
+            lock (_gate)
+            {
+                if (!_dirty && !_writerRunning) return;
+            }
+            if (sw.ElapsedMilliseconds >= timeoutMs) return;
+            Thread.Sleep(20);
+        }
+    }
+
+    private void RequestSave()
+    {
+        lock (_gate)
+        {
+            _dirty = true;
+            if (_writerRunning) return; // 動いている書き込みが最新の内容を拾う
+            _writerRunning = true;
+        }
+        _ = Task.Run(WriteLoop);
+    }
+
+    private void WriteLoop()
+    {
+        while (true)
+        {
+            List<NotificationRecord> snapshot;
+            lock (_gate)
+            {
+                _dirty = false;
+                snapshot = new List<NotificationRecord>(_items);
+            }
+            SaveSnapshot(snapshot);
+            lock (_gate)
+            {
+                // 書いている間に追加されていれば、最新の内容でもう一度書く
+                if (!_dirty)
+                {
+                    _writerRunning = false;
+                    return;
+                }
+            }
+        }
+    }
+
+    private void SaveSnapshot(List<NotificationRecord> items)
     {
         var path = FilePath();
         var tmp = path + ".tmp";
@@ -58,7 +132,7 @@ public sealed class HistoryStore
         {
             Directory.CreateDirectory(_folder);
             // 直接上書きせず、書けたら置換する(途中で落ちても履歴が壊れない)
-            File.WriteAllText(tmp, JsonSerializer.Serialize(_items.Take(MaxItems).ToList()));
+            File.WriteAllText(tmp, JsonSerializer.Serialize(items.Take(MaxItems).ToList()));
             File.Move(tmp, path, true);
         }
         catch

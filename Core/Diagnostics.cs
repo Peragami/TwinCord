@@ -13,7 +13,7 @@ public class Diagnostics
     private readonly Dictionary<Feature, int> _failures = new();
     private readonly Dictionary<Feature, int> _thresholds = new()
     {
-        [Feature.Badge] = 6,        // 5秒間隔 x6 = 約30秒応答なしで劣化判定
+        [Feature.Badge] = 6,        // 5〜10秒間隔 x6 = 約30〜60秒応答なしで劣化判定
         [Feature.HotkeyGlobal] = 1, // 登録失敗は即劣化
         [Feature.HotkeyPage] = 1,   // 注入失敗は即劣化
         [Feature.Page] = 3,         // 死活3連続失敗で劣化判定
@@ -85,11 +85,52 @@ public class Diagnostics
         }
     }
 
-    // WebView2イベント・タイマー・未処理例外など複数スレッドから呼ばれる。
-    // AppendAllTextは共有違反で失敗し得るため、ローテーションごと直列化する。
+    // WebView2イベント・タイマー・未処理例外など複数スレッドから呼ばれる。呼び出し元は
+    // UIスレッドのことが多く、その場で同期I/Oすると操作が引っかかるため、enqueueだけして
+    // 実際の書き込みは専用スレッドに任せる(通知が多い日でもUIを止めない)。
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<string> Pending = new();
+    private static readonly AutoResetEvent PendingSignal = new(false);
+    private static int _workerStarted;
+
+    // 書き込み(ローテーション含む)は単一スレッドからしか行わないが、
+    // 将来の直接呼び出しに備えて直列化しておく。
     private static readonly object LogLock = new();
 
     public static void Log(string msg)
+    {
+        Pending.Enqueue($"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {msg}");
+        if (Interlocked.Exchange(ref _workerStarted, 1) == 0)
+            new Thread(WorkerLoop) { IsBackground = true, Name = "TwinCordLog" }.Start();
+        try { PendingSignal.Set(); } catch { }
+    }
+
+    /// <summary>書き込み待ちのログを吐き出す(終了時に呼ぶ)。</summary>
+    public static void Flush(int timeoutMs = 2000)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (!Pending.IsEmpty && sw.ElapsedMilliseconds < timeoutMs)
+            Thread.Sleep(20);
+    }
+
+    private static void WorkerLoop()
+    {
+        while (true)
+        {
+            try
+            {
+                if (!Pending.TryDequeue(out var line))
+                {
+                    // 通知が無ければ待つ(取りこぼしを防ぐため定期的にも起きる)
+                    PendingSignal.WaitOne(250);
+                    continue;
+                }
+                WriteLocked(line);
+            }
+            catch { }
+        }
+    }
+
+    private static void WriteLocked(string line)
     {
         lock (LogLock)
         {
@@ -114,7 +155,7 @@ public class Diagnostics
                 }
                 if (!File.Exists(path) || new FileInfo(path).Length == 0)
                     File.WriteAllText(path, "", new UTF8Encoding(true)); // 先頭にBOM
-                File.AppendAllText(path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {msg}{Environment.NewLine}", new UTF8Encoding(false));
+                File.AppendAllText(path, line + Environment.NewLine, new UTF8Encoding(false));
             }
             catch { }
         }

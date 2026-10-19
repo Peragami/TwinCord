@@ -40,6 +40,9 @@ public partial class MainWindow : Window
             {
                 _settings = draft;
                 _settings.Save();
+                // 名前はインポートでも変わるため、旧names.txtとレール表示も合わせる
+                SaveNames();
+                RefreshRail();
                 ApplySettings();
             }
         }
@@ -82,6 +85,11 @@ public partial class MainWindow : Window
     {
         try
         {
+            // インポート先は設定画面の編集中コピー。「保存」を押すまで確定しない
+            // (誤ったファイルを選んでもキャンセルで元に戻せるようにするため)
+            var target = _settingsWindow?.Draft;
+            if (target is null) return "設定画面が開かれていません。";
+
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
                 Filter = "TwinCord設定(*.twincord.json)|*.twincord.json",
@@ -104,8 +112,7 @@ public partial class MainWindow : Window
                     if (ns.Acc1Name.Length == 0) ns.Acc1Name = "Acc1";
                     if (ns.Acc2Name.Length == 0) ns.Acc2Name = "Acc2";
                     ns.NamesMigrated = true; // 旧names.txtを後から読み直さない
-                    _settings = ns;
-                    _settings.Save();
+                    target.CopyFrom(ns);
                     changed = true;
                 }
             }
@@ -113,19 +120,15 @@ public partial class MainWindow : Window
             if (r.TryGetProperty("names", out var nm) && nm.ValueKind == JsonValueKind.Array)
             {
                 var arr = nm.EnumerateArray().Select(e => AppSettings.CleanName(e.GetString())).ToArray();
-                if (arr.Length > 0 && arr[0].Length > 0) _settings.Acc1Name = arr[0];
-                if (arr.Length > 1 && arr[1].Length > 0) _settings.Acc2Name = arr[1];
-                _settings.NamesMigrated = true;
-                _settings.Save();
-                SaveNames();
+                if (arr.Length > 0 && arr[0].Length > 0) target.Acc1Name = arr[0];
+                if (arr.Length > 1 && arr[1].Length > 0) target.Acc2Name = arr[1];
+                target.NamesMigrated = true;
                 changed = true;
             }
             if (!changed) return "インポートできる設定がありませんでした。";
-            // 開いている設定画面の編集用コピーも更新する(OKでインポート内容が巻き戻るのを防ぐ)
-            _settingsWindow?.ReloadFrom(_settings);
-            RefreshRail();
-            ApplySettings();
-            return "インポートしました(再起動不要)。";
+            // 開いている設定画面の表示も更新する
+            _settingsWindow?.RefreshUi();
+            return "インポートしました。「保存」を押すと反映されます。";
         }
         catch (Exception ex)
         {
@@ -143,6 +146,12 @@ public partial class MainWindow : Window
         {
             Badge1.Visibility = Visibility.Collapsed;
             Badge2.Visibility = Visibility.Collapsed;
+        }
+        // 「アプリをダウンロード」を隠す設定は、再読み込みを待たず今のページへ反映する
+        if (_settings.HideDownloadButton)
+        {
+            _ = HideDownloadAsync(View1);
+            _ = HideDownloadAsync(View2);
         }
     }
 
