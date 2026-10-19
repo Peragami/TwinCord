@@ -29,7 +29,7 @@ public sealed class TrayManager : IDisposable
             _tray.Visible = true;
             return;
         }
-        _icon ??= GetAppIcon();
+        _icon ??= AppIcon.Extract();
         _tray = new WinForms.NotifyIcon
         {
             Icon = _icon ?? System.Drawing.SystemIcons.Application,
@@ -71,20 +71,6 @@ public sealed class TrayManager : IDisposable
         _clickTimer.Interval = TimeSpan.FromMilliseconds(Math.Max(1000, timeoutMs) + 500);
         _clickTimer.Start();
         _tray?.ShowBalloonTip(timeoutMs, title, text, icon);
-    }
-
-    private static System.Drawing.Icon? GetAppIcon()
-    {
-        try
-        {
-            var path = Environment.ProcessPath;
-            if (string.IsNullOrEmpty(path)) return null;
-            return System.Drawing.Icon.ExtractAssociatedIcon(path);
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     public void Dispose()

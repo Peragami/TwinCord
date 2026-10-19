@@ -8,6 +8,9 @@ public static class AppConstants
 {
     public const string AppName = "TwinCord";
 
+    /// <summary>アカウント名の既定値(未設定・インポート時)。</summary>
+    public static string DefaultAccountName(int n) => "Acc" + n;
+
     // 単一起動
     public const string SingleInstanceMutex = "TwinCord_SingleInstance";
     public const string ShowWindowEvent = "TwinCord_ShowWindow";

@@ -102,15 +102,7 @@ public partial class MainWindow : Window
         // 本文そのものは履歴に残るため、ログは「本文N文字」に留める(診断ログが長く残るため)
         Diagnostics.Log($"通知({acc}): {title} / 本文{body.Length}文字");
         _history.Add(new NotificationRecord(DateTime.Now, n, acc, text));
-        Dispatcher.BeginInvoke(() =>
-        {
-            _tray.ShowBalloon("TwinCord - " + acc, text, WinForms.ToolTipIcon.Info, 8000, () =>
-            {
-                BringToFront();
-                SwitchTo(n);
-                return Task.CompletedTask;
-            });
-        });
+        Dispatcher.BeginInvoke(() => ShowAccountBalloon(n, "TwinCord - " + acc, text, 8000));
         return true;
     }
 
@@ -149,13 +141,7 @@ public partial class MainWindow : Window
         var n = _current;
         var acc = AccName(n);
         Diagnostics.Log("テスト通知送信");
-        _tray.ShowBalloon("TwinCord - " + acc, "テスト通知\nこれはテストです。クリックでこのアカウントを表示します。",
-            WinForms.ToolTipIcon.Info, 8000, () =>
-            {
-                BringToFront();
-                SwitchTo(n);
-                return Task.CompletedTask;
-            });
+        ShowAccountBalloon(n, "TwinCord - " + acc, "テスト通知\nこれはテストです。クリックでこのアカウントを表示します。", 8000);
     }
 
 
@@ -189,11 +175,7 @@ public partial class MainWindow : Window
             var msg = $"「{name}」が動作しなくなりました。Discord側の更新により TwinCord v{Diagnostics.AppVersion()} が古くなった可能性があります。設定(歯車)→アプリについて→自己診断で詳細を確認してください。";
             Diagnostics.Log("通知: " + msg.Replace(Environment.NewLine, " "));
             if (_tray.IsVisible)
-                _tray.ShowBalloon("TwinCord", msg, WinForms.ToolTipIcon.Warning, 8000, () =>
-                {
-                    BringToFront();
-                    return Task.CompletedTask;
-                });
+                ShowBalloon("TwinCord", msg, WinForms.ToolTipIcon.Warning, 8000);
             else
                 System.Windows.MessageBox.Show(msg, "TwinCord", MessageBoxButton.OK, MessageBoxImage.Warning);
         });

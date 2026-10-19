@@ -105,12 +105,7 @@ public partial class MainWindow : Window
                 var ns = JsonSerializer.Deserialize<AppSettings>(s.GetRawText());
                 if (ns is not null)
                 {
-                    ns.Zoom1 = AppSettings.ClampZoom(ns.Zoom1);
-                    ns.Zoom2 = AppSettings.ClampZoom(ns.Zoom2);
-                    ns.Acc1Name = AppSettings.CleanName(ns.Acc1Name);
-                    ns.Acc2Name = AppSettings.CleanName(ns.Acc2Name);
-                    if (ns.Acc1Name.Length == 0) ns.Acc1Name = "Acc1";
-                    if (ns.Acc2Name.Length == 0) ns.Acc2Name = "Acc2";
+                    ns.NormalizeValues();
                     ns.NamesMigrated = true; // 旧names.txtを後から読み直さない
                     target.CopyFrom(ns);
                     changed = true;

@@ -334,11 +334,7 @@ public partial class MainWindow : Window
             Diagnostics.Log(msg);
             if (_tray.IsVisible)
             {
-                _tray.ShowBalloon("TwinCord", msg, WinForms.ToolTipIcon.Warning, 8000, () =>
-                {
-                    BringToFront();
-                    return Task.CompletedTask;
-                });
+                ShowBalloon("TwinCord", msg, WinForms.ToolTipIcon.Warning, 8000);
             }
             else
             {
@@ -375,7 +371,7 @@ public partial class MainWindow : Window
             if (core is null) return $"{label}: 未起動";
             var sw = Stopwatch.StartNew();
             var t = core.ExecuteScriptAsync(PageScripts.ReadyState);
-            if (await Task.WhenAny(t, Task.Delay(8000)) != t)
+            if (await Task.WhenAny(t, Task.Delay(AppConstants.DiagnosticsEvalTimeoutMs)) != t)
                 return $"{label}: 応答なし(タイムアウト)";
             var state = await t;
             sw.Stop();

@@ -113,13 +113,13 @@
 
                     <TextBlock Text="設定の持ち運び" Style="{StaticResource SectionHeader}" />
                     <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                        <Button x:Name="ExportButton" Content="エクスポート" Style="{StaticResource BtnSecondary}" Click="ExportButton_Click" />
-                        <Button x:Name="ImportButton" Content="インポート" Style="{StaticResource BtnSecondary}" Margin="8,0,0,0" Click="ImportButton_Click" />
+                        <Button Content="エクスポート" Style="{StaticResource BtnSecondary}" Click="ExportButton_Click" />
+                        <Button Content="インポート" Style="{StaticResource BtnSecondary}" Margin="8,0,0,0" Click="ImportButton_Click" />
                     </StackPanel>
                     <TextBlock x:Name="TransferResult" Style="{StaticResource ResultText}" />
 
                     <TextBlock Text="通知テスト" Style="{StaticResource SectionHeader}" />
-                    <Button x:Name="TestNotifyButton" Content="テスト通知を送る"
+                    <Button Content="テスト通知を送る"
                             Style="{StaticResource BtnSecondary}" HorizontalAlignment="Left"
                             Margin="0,4,0,0" Click="TestNotifyButton_Click" />
                 </StackPanel>

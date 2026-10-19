@@ -4,7 +4,6 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-        xmlns:local="clr-namespace:TwinCord"
         mc:Ignorable="d"
         Title="TwinCord" Height="900" Width="1200"
         Background="#1E1F22">
@@ -186,7 +185,7 @@
 
             <Border Height="2" Width="32" Background="#35363C" CornerRadius="1"
                     HorizontalAlignment="Center" Margin="0,24,0,0" />
-            <Button x:Name="ReloadButton" Style="{StaticResource RailToolButton}"
+            <Button Style="{StaticResource RailToolButton}"
                     Content="&#x21BB;" ToolTip="表示中を再読み込み(メモリ解放)"
                     Margin="0,16,0,0" Click="ReloadButton_Click" />
             <Button x:Name="SettingsButton" Style="{StaticResource RailToolButton}"

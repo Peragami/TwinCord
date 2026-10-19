@@ -32,6 +32,14 @@ public partial class UpdateDialog : Window
         }
     }
 
+    /// <summary>更新中はボタンを止めて進捗を出し、終わったら元へ戻す。</summary>
+    private void SetBusy(bool busy)
+    {
+        UpdateButton.IsEnabled = !busy;
+        LaterButton.IsEnabled = !busy;
+        Progress.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void LaterButton_Click(object sender, RoutedEventArgs e)
     {
         _cts?.Cancel();
@@ -55,9 +63,7 @@ public partial class UpdateDialog : Window
             StatusText.Text = "実行ファイルの場所が特定できません。手動で更新してください。";
             return;
         }
-        UpdateButton.IsEnabled = false;
-        LaterButton.IsEnabled = false;
-        Progress.Visibility = Visibility.Visible;
+        SetBusy(true);
         _cts = new CancellationTokenSource();
         try
         {
@@ -75,9 +81,7 @@ public partial class UpdateDialog : Window
             {
                 StatusText.Text = "配布ファイルの検証に失敗しました。手動で更新してください。";
                 Updater.CleanStage();
-                UpdateButton.IsEnabled = true;
-                LaterButton.IsEnabled = true;
-                Progress.Visibility = Visibility.Collapsed;
+                SetBusy(false);
                 return;
             }
             StatusText.Text = "展開中…";
@@ -92,16 +96,12 @@ public partial class UpdateDialog : Window
         catch (OperationCanceledException)
         {
             StatusText.Text = "キャンセルしました。";
-            UpdateButton.IsEnabled = true;
-            LaterButton.IsEnabled = true;
-            Progress.Visibility = Visibility.Collapsed;
+            SetBusy(false);
         }
         catch (Exception ex)
         {
             StatusText.Text = "更新に失敗しました: " + ex.Message;
-            UpdateButton.IsEnabled = true;
-            LaterButton.IsEnabled = true;
-            Progress.Visibility = Visibility.Collapsed;
+            SetBusy(false);
         }
     }
 }

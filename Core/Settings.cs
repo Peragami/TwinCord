@@ -21,8 +21,8 @@ public class AppSettings
     public bool SkipViewedAccount { get; set; } = true;
     public bool NotifyHiddenOnly { get; set; }
     public bool HideDownloadButton { get; set; } = true;
-    public string Acc1Name { get; set; } = "Acc1";
-    public string Acc2Name { get; set; } = "Acc2";
+    public string Acc1Name { get; set; } = AppConstants.DefaultAccountName(1);
+    public string Acc2Name { get; set; } = AppConstants.DefaultAccountName(2);
     /// <summary>旧names.txtからの移行が済んだか(移行は一度だけ行う)。</summary>
     public bool NamesMigrated { get; set; }
 
@@ -112,13 +112,20 @@ public class AppSettings
         }
         // 形式版が無い/不正なファイルは現行版として扱う(将来、版ごとの移行処理をここで分岐する)
         if (s.SettingsVersion <= 0) s.SettingsVersion = CurrentSettingsVersion;
-        s.Zoom1 = ClampZoom(s.Zoom1);
-        s.Zoom2 = ClampZoom(s.Zoom2);
-        // 手書き/インポートされた設定でも表示が崩れないよう、名前を正規化しておく
-        s.Acc1Name = CleanNameOr(s.Acc1Name, "Acc1");
-        s.Acc2Name = CleanNameOr(s.Acc2Name, "Acc2");
+        s.NormalizeValues();
         MigrateNames(s);
         return s;
+    }
+
+    /// <summary>
+    /// 読み込み・インポート共通の値の正規化(手書き・外部ファイルでも表示が崩れないようにする)。
+    /// </summary>
+    internal void NormalizeValues()
+    {
+        Zoom1 = ClampZoom(Zoom1);
+        Zoom2 = ClampZoom(Zoom2);
+        Acc1Name = CleanNameOr(Acc1Name, AppConstants.DefaultAccountName(1));
+        Acc2Name = CleanNameOr(Acc2Name, AppConstants.DefaultAccountName(2));
     }
 
     /// <summary>壊れた設定ファイルを settings.json.bak へ退避する(中身を確認できるように残す)。</summary>
