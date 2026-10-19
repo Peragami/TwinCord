@@ -111,6 +111,10 @@ public class Diagnostics
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string> Pending = new();
     private static readonly AutoResetEvent PendingSignal = new(false);
     private static int _workerStarted;
+    // Flushの判定用。キューが空になっても「取り出し済みで書き込み中」の1行が残るため、
+    // 件数(投入/書き込み完了)で追いつきを判定する
+    private static int _enqueued;
+    private static int _written;
 
     // 書き込み(ローテーション含む)は単一スレッドからしか行わないが、
     // 将来の直接呼び出しに備えて直列化しておく。
@@ -119,6 +123,7 @@ public class Diagnostics
     public static void Log(string msg)
     {
         Pending.Enqueue($"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {msg}");
+        Interlocked.Increment(ref _enqueued);
         if (Interlocked.Exchange(ref _workerStarted, 1) == 0)
             new Thread(WorkerLoop) { IsBackground = true, Name = "TwinCordLog" }.Start();
         try { PendingSignal.Set(); } catch { }
@@ -127,8 +132,10 @@ public class Diagnostics
     /// <summary>書き込み待ちのログを吐き出す(終了時に呼ぶ)。</summary>
     public static void Flush(int timeoutMs = 2000)
     {
+        // キューが空でも書き込み中の1行が残るため、書き込み済み件数が追いつくまで待つ
+        var target = Volatile.Read(ref _enqueued);
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        while (!Pending.IsEmpty && sw.ElapsedMilliseconds < timeoutMs)
+        while (Volatile.Read(ref _written) < target && sw.ElapsedMilliseconds < timeoutMs)
             Thread.Sleep(20);
     }
 
@@ -145,6 +152,7 @@ public class Diagnostics
                     continue;
                 }
                 WriteLocked(line);
+                Interlocked.Increment(ref _written);
             }
             catch { }
         }

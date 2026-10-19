@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using TwinCord;
 
@@ -63,6 +64,41 @@ public class SettingsTests
         Assert.Equal("Acc2", s.Acc2Name);
         Assert.Equal(1.0, s.Zoom1);
         Assert.Equal(1.0, s.Zoom2);
+        Assert.Equal(AppSettings.CurrentSettingsVersion, s.SettingsVersion);
+    }
+
+    [Fact]
+    public void LoadFrom_MovesCorruptFileToBackupAndUsesDefaults()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, AppConstants.SettingsFileName);
+        // JSONとして壊れている(かつ読めない)設定を用意する
+        File.WriteAllText(path, "{ 壊れている ");
+
+        var s = AppSettings.LoadFrom(path);
+
+        // 既定値で起動し、元のファイルは .bak に残る(次の保存で上書きされる前に退避)
+        Assert.True(s.MinimizeToTray);
+        Assert.Equal(AppSettings.CurrentSettingsVersion, s.SettingsVersion);
+        Assert.False(File.Exists(path));
+        Assert.True(File.Exists(path + ".bak"));
+        Assert.Contains("壊れている", File.ReadAllText(path + ".bak"));
+    }
+
+    [Fact]
+    public void LoadFrom_TreatsMissingVersionAsCurrent()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, AppConstants.SettingsFileName);
+        // 形式版が無い(旧形式の)設定ファイル
+        File.WriteAllText(path, """{"Acc1Name":"Old"}""");
+
+        var s = AppSettings.LoadFrom(path);
+
+        Assert.Equal("Old", s.Acc1Name);
+        Assert.Equal(AppSettings.CurrentSettingsVersion, s.SettingsVersion);
+        // 壊れていないので退避しない
+        Assert.False(File.Exists(path + ".bak"));
     }
 
     [Fact]
@@ -103,6 +139,7 @@ public class SettingsTests
             Acc1Name = "Alice",
             Acc2Name = "Bob",
             NamesMigrated = true,
+            SettingsVersion = 2,
             Zoom1 = 1.25,
             Zoom2 = 0.75,
             WinLeft = 10,

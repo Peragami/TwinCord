@@ -134,8 +134,8 @@ public partial class MainWindow : Window
         panel.Children.Add(box);
         panel.Children.Add(btns);
         dlg.Content = panel;
-        box.Focus();
-        box.SelectAll();
+        // ShowDialogの後のFocusは効かないため、表示直後(Loaded)に合わせる
+        dlg.Loaded += (_, _) => { box.Focus(); box.SelectAll(); };
         if (dlg.ShowDialog() != true) return null;
         var name = AppSettings.CleanName(box.Text); // 空白のみ・制御文字は弾く
         return name.Length > 0 ? name : null;
