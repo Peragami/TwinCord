@@ -31,4 +31,8 @@ public static class AppConstants
 
     // アバターとして受け入れる最大サイズ(過大なレスポンスでメモリを消費しない)
     public const int AvatarMaxBytes = 2 * 1024 * 1024;
+
+    // 2枚目の初期化を待たせる上限。表示中の1枚目の初回読み込みを優先するため。
+    // 1枚目が失敗・応答なしでもこの時間で2枚目を開始する(それ以上は常駐が遅れるだけなので待たない)。
+    public static readonly TimeSpan SecondViewWait = TimeSpan.FromSeconds(60);
 }

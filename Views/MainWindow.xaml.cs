@@ -34,10 +34,18 @@ public partial class MainWindow : Window
 
     private AppSettings _settings = AppSettings.Load();
 
+    // 起動〜初回表示までの所要時間をログに残すための基準時刻
+    private static readonly DateTime AppStartedUtc = DateTime.UtcNow;
+    private static long ElapsedMs() => (long)(DateTime.UtcNow - AppStartedUtc).TotalMilliseconds;
+
     private bool _view1Ready;
     private bool _view2Ready;
     private Task? _initTask1;
     private Task? _initTask2;
+    // 初回読み込み(ページ表示)が済んだか。済むまでメモリ抑制を掛けない。
+    private readonly bool[] _viewContentLoaded = new bool[3];
+    // 1枚目の初回表示完了。2枚目の初期化はこれ(またはタイムアウト)を待ってから始める。
+    private readonly TaskCompletionSource _firstViewLoaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     // 2アカウントで共有するWebView2環境(1つだけ作る)
     private CoreWebView2Environment? _sharedEnv;
     private Task<CoreWebView2Environment>? _sharedEnvTask;
@@ -170,12 +178,17 @@ public partial class MainWindow : Window
                 Hide();
                 _tray.Ensure();
             }
-            // 起動時から最小化/非表示なら、表示側もLowにしておく
+            // 起動時から最小化/非表示なら、初回読み込み完了後に表示側もLowになる
+            // (読み込み完了前は SetViewLoaded まで抑制しない)
             _watchdog?.SetWindowHidden(WindowState == WindowState.Minimized || !IsVisible);
             // 逐次起動(起動ピークを抑えつつ両方常駐)
             await EnsureViewAsync(1);
             RefreshRail();
-            await EnsureViewAsync(2);
+            // 2枚目は1枚目の初回表示を待ってから始める(表示中アカの初回表示を優先)。
+            // 常駐が目的なので完了は待たず、失敗だけログに残す。
+            _ = EnsureViewAsync(2).ContinueWith(
+                t => Diagnostics.Log("acc2の初期化に失敗: " + t.Exception?.GetBaseException().Message),
+                CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
             SwitchTo(_current);
             if (_watchdog is not null)
             {

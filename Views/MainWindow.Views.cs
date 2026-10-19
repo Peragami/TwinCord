@@ -56,13 +56,29 @@ public partial class MainWindow : Window
 
     private async Task InitViewAsync(int n, Microsoft.Web.WebView2.Wpf.WebView2 view, double zoom)
     {
+        // 表示中(1枚目)の初回表示を優先するため、2枚目は1枚目の初回表示完了まで待つ。
+        // 1枚目が失敗してもこの待ちはタイムアウトで解ける(常駐が止まらないように)。
+        if (n == 2) await WaitForFirstViewLoadedAsync();
+        var sw = Stopwatch.StartNew();
         // 1つの環境(ブラウザ/GPUプロセスを共有)に、アカウント別プロファイルを載せる。
         // クッキー/localStorageはプロファイルごとに分離されるため、ログインも通知も両方そのまま動く。
         var env = await GetSharedEnvironmentAsync();
+        var envMs = sw.ElapsedMilliseconds;
         var options = env.CreateCoreWebView2ControllerOptions();
         options.ProfileName = ProfileName(n);
         await view.EnsureCoreWebView2Async(env, options);
+        var ctlMs = sw.ElapsedMilliseconds;
         await ConfigureViewAsync(n, view, zoom);
+        Diagnostics.Log($"acc{n} 初期化: 環境={envMs}ms コントローラ={ctlMs - envMs}ms 設定={sw.ElapsedMilliseconds - ctlMs}ms 累計={sw.ElapsedMilliseconds}ms");
+    }
+
+    /// <summary>1枚目の初回表示完了を待つ。上限を超えたら諦めて2枚目を始める。</summary>
+    private async Task WaitForFirstViewLoadedAsync()
+    {
+        var t = _firstViewLoaded.Task;
+        if (t.IsCompleted) return;
+        if (await Task.WhenAny(t, Task.Delay(AppConstants.SecondViewWait)) != t)
+            Diagnostics.Log($"acc1の初回表示待ちがタイムアウト({AppConstants.SecondViewWait.TotalSeconds}秒)したためacc2を開始");
     }
 
     private static string EnsureDataFolder(string name)
@@ -90,7 +106,12 @@ public partial class MainWindow : Window
 
     private async Task<CoreWebView2Environment> CreateSharedEnvironmentAsync()
     {
-        var env = await CoreWebView2Environment.CreateAsync(null, EnsureDataFolder(AppConstants.WebViewDataFolder));
+        var folder = EnsureDataFolder(AppConstants.WebViewDataFolder);
+        // 初回(プロファイル新規)はキャッシュが無く読み込みが遅い。原因切り分け用に記録する。
+        bool cold = !Directory.Exists(Path.Combine(folder, "EBWebView"));
+        var sw = Stopwatch.StartNew();
+        var env = await CoreWebView2Environment.CreateAsync(null, folder);
+        Diagnostics.Log($"共有環境を作成: {sw.ElapsedMilliseconds}ms{(cold ? "(初回/キャッシュ無し)" : "")}");
         _sharedEnv = env;
         return env;
     }
@@ -100,8 +121,8 @@ public partial class MainWindow : Window
     /// <summary>両アカウント共通の初期化。</summary>
     private async Task ConfigureViewAsync(int n, Microsoft.Web.WebView2.Wpf.WebView2 view, double zoom)
     {
-        // 読み込み中から非表示側は絞っておく(起動ピークの抑制。表示切替時にRefreshされる)
-        PageWatchdog.SetMemoryLevel(view, n != _current);
+        // メモリ抑制(Low)は初回読み込みが終わってから掛ける(読み込み前のLowは初回表示を遅くするため)。
+        // 適用は OnViewContentLoaded → PageWatchdog.SetViewLoaded 経由。
         // リンクホバー時の左下URLプレビュー(ステータスバー)を出さない
         try { view.CoreWebView2.Settings.IsStatusBarEnabled = false; } catch { }
         SetZoom(view, zoom);
@@ -130,6 +151,7 @@ public partial class MainWindow : Window
                 {
                     _processReloadCount[n] = 0;
                     _reloadFailureShown[n] = false;
+                    OnViewContentLoaded(n, view);
                 }
                 if (logged) return;
                 logged = true;
@@ -214,6 +236,25 @@ public partial class MainWindow : Window
             catch (Exception ex) { Diagnostics.Log($"外部リンク起動失敗: {ex.Message}"); }
         };
         view.CoreWebView2.Navigate(Discord.HomeUrl);
+    }
+
+    /// <summary>
+    /// Discordの初回読み込み完了時に1度だけ呼ばれる。メモリ抑制の適用開始と、
+    /// 2枚目の開始条件(1枚目の完了)の通知を行う。
+    /// </summary>
+    private void OnViewContentLoaded(int n, Microsoft.Web.WebView2.Wpf.WebView2 view)
+    {
+        if (_viewContentLoaded[n]) return;
+        // 起動直後のabout:blank等を「読み込み完了」と数えない(メモリ抑制を早く掛けないため)
+        string source;
+        try { source = view.CoreWebView2?.Source ?? ""; }
+        catch { source = ""; }
+        if (!Discord.IsDiscordUri(source)) return;
+
+        _viewContentLoaded[n] = true;
+        Diagnostics.Log($"acc{n} 初回表示完了: 起動から{ElapsedMs()}ms ({source})");
+        _watchdog?.SetViewLoaded(n);
+        if (n == 1) _firstViewLoaded.TrySetResult();
     }
 
     /// <summary>

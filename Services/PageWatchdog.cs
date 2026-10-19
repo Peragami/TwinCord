@@ -33,6 +33,9 @@ public sealed class PageWatchdog
     private bool _inVoice1;
     private bool _inVoice2;
     private bool _windowHidden;
+    // 初回読み込みが終わったアカウントだけメモリ抑制(Low)の対象にする
+    private bool _loaded1;
+    private bool _loaded2;
     private string _avatarUrl1 = "";
     private string _avatarUrl2 = "";
     private DispatcherTimer? _badgeTimer;
@@ -107,8 +110,16 @@ public sealed class PageWatchdog
     public void RefreshMemoryLevels()
     {
         int current = _current();
-        SetMemoryLevel(_acc1.View, !_inVoice1 && (_windowHidden || current != 1));
-        SetMemoryLevel(_acc2.View, !_inVoice2 && (_windowHidden || current != 2));
+        // 読み込み前のLowは初回表示を遅くするため、初回読み込みが済んだ側にだけ掛ける
+        if (_loaded1) SetMemoryLevel(_acc1.View, !_inVoice1 && (_windowHidden || current != 1));
+        if (_loaded2) SetMemoryLevel(_acc2.View, !_inVoice2 && (_windowHidden || current != 2));
+    }
+
+    /// <summary>初回読み込み完了を記録し、以降はメモリ抑制の対象にする。</summary>
+    public void SetViewLoaded(int n)
+    {
+        if (n == 1) _loaded1 = true; else _loaded2 = true;
+        RefreshMemoryLevels();
     }
 
     public static void SetMemoryLevel(WpfWebView2 view, bool low)
