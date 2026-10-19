@@ -1,5 +1,8 @@
 using System.Windows;
 
+// テストから内部処理を直接検証できるようにする(アプリ公開APIを広げないため)
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("TwinCord.Tests")]
+
 [assembly:ThemeInfo(
     ResourceDictionaryLocation.None,            //where theme specific resource dictionaries are located
                                                 //(used if a resource is not found in the page,
