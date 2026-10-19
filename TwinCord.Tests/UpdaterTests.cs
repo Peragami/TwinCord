@@ -1,4 +1,5 @@
 using System.IO;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -10,16 +11,23 @@ namespace TwinCord.Tests;
 public class UpdaterTests
 {
     private const string DefaultAssetUrl =
-        "https://github.com/Peragami/TwinCord/releases/download/v1.10.0/TwinCord.exe";
+        "https://github.com/Peragami/TwinCord/releases/download/v1.11.0/TwinCord.zip";
+
+    [Fact]
+    public void AssetName_IsTheReleaseZipName()
+    {
+        // リリースに添付する名前。変えると自動更新が動かなくなる
+        Assert.Equal("TwinCord.zip", Updater.AssetName);
+    }
 
     [Theory]
     [InlineData(DefaultAssetUrl, true)]
-    [InlineData("https://github.com/peragami/twincord/releases/download/v1.10.0/TwinCord.exe", true)]
-    [InlineData("http://github.com/Peragami/TwinCord/releases/download/v1.10.0/TwinCord.exe", false)]
-    [InlineData("https://evil.example/Peragami/TwinCord/releases/download/v1.10.0/TwinCord.exe", false)]
-    [InlineData("https://github.com/Other/TwinCord/releases/download/v1.10.0/TwinCord.exe", false)]
-    [InlineData("https://github.com/Peragami/TwinCord/releases/tag/v1.10.0", false)]
-    [InlineData("https://github.com/Peragami/TwinCord/releases/download-evil/v1.10.0/TwinCord.exe", false)]
+    [InlineData("https://github.com/peragami/twincord/releases/download/v1.11.0/TwinCord.zip", true)]
+    [InlineData("http://github.com/Peragami/TwinCord/releases/download/v1.11.0/TwinCord.zip", false)]
+    [InlineData("https://evil.example/Peragami/TwinCord/releases/download/v1.11.0/TwinCord.zip", false)]
+    [InlineData("https://github.com/Other/TwinCord/releases/download/v1.11.0/TwinCord.zip", false)]
+    [InlineData("https://github.com/Peragami/TwinCord/releases/tag/v1.11.0", false)]
+    [InlineData("https://github.com/Peragami/TwinCord/releases/download-evil/v1.11.0/TwinCord.zip", false)]
     [InlineData("", false)]
     [InlineData(null, false)]
     public void IsTrustedAssetUrl_ReturnsExpected(string? url, bool expected)
@@ -50,8 +58,8 @@ public class UpdaterTests
         var info = await Updater.FetchLatestAsync(http);
 
         Assert.NotNull(info);
-        Assert.Equal("v1.10.0", info!.Tag);
-        Assert.Equal("1.10.0", info.Version);
+        Assert.Equal("v1.11.0", info!.Tag);
+        Assert.Equal("1.11.0", info.Version);
         Assert.Equal("release notes", info.Notes);
         Assert.Equal(DefaultAssetUrl, info.AssetUrl);
         Assert.Equal("ABC123", info.Sha256);
@@ -149,17 +157,56 @@ public class UpdaterTests
         var payload = Encoding.UTF8.GetBytes("abcdef");
         using var http = new HttpClient(new StubHttpMessageHandler(payload));
         using var temp = new TempFolder();
-        var dest = Path.Combine(temp.Path, "nested", "TwinCord.new.exe");
+        var dest = Path.Combine(temp.Path, "nested", "TwinCord.zip");
 
-        await Updater.DownloadAsync(http, "https://example.test/TwinCord.exe", dest,
+        await Updater.DownloadAsync(http, "https://example.test/TwinCord.zip", dest,
             new NullProgress(), CancellationToken.None);
 
         Assert.Equal(payload, await File.ReadAllBytesAsync(dest));
     }
 
+    [Fact]
+    public void ExtractZip_ExtractsAndReplacesPreviousContent()
+    {
+        using var temp = new TempFolder();
+        var zip = Path.Combine(temp.Path, "test.zip");
+        using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
+        {
+            WriteEntry(archive, "TwinCord.exe", "exe");
+            WriteEntry(archive, "data/README.txt", "readme");
+        }
+        var dest = Path.Combine(temp.Path, "out");
+        Updater.ExtractZip(zip, dest);
+        Assert.Equal("exe", File.ReadAllText(Path.Combine(dest, "TwinCord.exe")));
+        Assert.Equal("readme", File.ReadAllText(Path.Combine(dest, "data", "README.txt")));
+
+        // 前回の展開先は作り直す(古いファイルを同期対象に残さない)
+        File.WriteAllText(Path.Combine(dest, "old.txt"), "old");
+        Updater.ExtractZip(zip, dest);
+        Assert.False(File.Exists(Path.Combine(dest, "old.txt")));
+    }
+
+    [Fact]
+    public void ExtractZip_RejectsEntryEscapingDestination()
+    {
+        using var temp = new TempFolder();
+        var zip = Path.Combine(temp.Path, "evil.zip");
+        using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
+            WriteEntry(archive, "../evil.txt", "x");
+
+        Assert.ThrowsAny<IOException>(() => Updater.ExtractZip(zip, Path.Combine(temp.Path, "out")));
+        Assert.False(File.Exists(Path.Combine(temp.Path, "evil.txt")));
+    }
+
+    private static void WriteEntry(ZipArchive archive, string name, string content)
+    {
+        using var writer = new StreamWriter(archive.CreateEntry(name).Open());
+        writer.Write(content);
+    }
+
     private static string BuildReleaseJson(
-        string assetUrl, string assetName = "TwinCord.exe",
-        string? digest = "sha256:ABC123", string tag = "v1.10.0")
+        string assetUrl, string assetName = "TwinCord.zip",
+        string? digest = "sha256:ABC123", string tag = "v1.11.0")
     {
         return JsonSerializer.Serialize(new
         {

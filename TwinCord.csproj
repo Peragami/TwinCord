@@ -7,9 +7,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
-    <Version>1.10.3</Version>
+    <Version>1.11.0</Version>
     <ApplicationIcon>TwinCord.ico</ApplicationIcon>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- 配布はフォルダ構成なので、使わない多言語リソースを同梱しない(フォルダを見やすく、zipを軽く)。
+         日本語と英語だけ残す(それ以外の言語のフレームワークメッセージは英語にフォールバック) -->
+    <SatelliteResourceLanguages>en;ja</SatelliteResourceLanguages>
   </PropertyGroup>
 
   <!-- 単一exe配布のときは同梱物を圧縮してサイズを抑える(初回起動がやや遅くなる)

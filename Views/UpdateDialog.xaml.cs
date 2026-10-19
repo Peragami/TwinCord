@@ -18,8 +18,8 @@ public partial class UpdateDialog : Window
         CurrentText.Text = "現在: v" + Diagnostics.AppVersion();
         LatestText.Text = "最新: " + info.Tag;
         NotesText.Text = string.IsNullOrWhiteSpace(info.Notes) ? "(変更内容の記載なし)" : info.Notes;
-        // ビルドの種類(通常版/自己完結版)によらず自動更新できる。単一exeを入れ替えるだけなので、
-        // 自己完結版を使っていてもそのまま.NET不要版へ更新される。
+        // 更新は配布zip(TwinCord.zip)を1つダウンロードし、フォルダへミラー同期する方式。
+        // dataとmods(将来)は同期の対象外なので、設定・ログイン情報はそのまま残る。
         if (string.IsNullOrEmpty(info.AssetUrl))
         {
             UpdateButton.IsEnabled = false;
@@ -41,18 +41,16 @@ public partial class UpdateDialog : Window
     protected override void OnClosed(EventArgs e)
     {
         try { _cts?.Cancel(); } catch { }
-        // 適用せずに閉じた場合は、ダウンロード済みの一時ファイルを残さない
-        if (!_applied)
-        {
-            try { File.Delete(Updater.StagePath()); } catch { }
-        }
+        // 適用せずに閉じた場合は、ダウンロード済みのzipと展開先を残さない
+        if (!_applied) Updater.CleanStage();
         base.OnClosed(e);
     }
 
     private async void UpdateButton_Click(object sender, RoutedEventArgs e)
     {
         var exe = Environment.ProcessPath;
-        if (string.IsNullOrEmpty(exe))
+        var appDir = string.IsNullOrEmpty(exe) ? null : Path.GetDirectoryName(exe);
+        if (string.IsNullOrEmpty(appDir))
         {
             StatusText.Text = "実行ファイルの場所が特定できません。手動で更新してください。";
             return;
@@ -66,26 +64,29 @@ public partial class UpdateDialog : Window
             StatusText.Text = "ダウンロード中…";
             using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("TwinCord");
-            var dest = Updater.StagePath();
-            try { File.Delete(dest); } catch { } // 前回中断した残骸を残さない
+            var zip = Updater.StageZipPath();
+            Updater.CleanStage(); // 前回中断した残骸を残さない
             var progress = new Progress<double>(v => Progress.Value = v);
-            await Updater.DownloadAsync(http, _info.AssetUrl, dest, progress, _cts.Token);
+            await Updater.DownloadAsync(http, _info.AssetUrl, zip, progress, _cts.Token);
             StatusText.Text = "検証中…";
             if (string.IsNullOrEmpty(_info.Sha256))
                 Diagnostics.Log("更新: ハッシュが無いため改ざん検証をスキップ");
-            if (!Updater.VerifySha256(dest, _info.Sha256))
+            if (!Updater.VerifySha256(zip, _info.Sha256))
             {
                 StatusText.Text = "配布ファイルの検証に失敗しました。手動で更新してください。";
-                try { File.Delete(dest); } catch { }
+                Updater.CleanStage();
                 UpdateButton.IsEnabled = true;
                 LaterButton.IsEnabled = true;
                 Progress.Visibility = Visibility.Collapsed;
                 return;
             }
+            StatusText.Text = "展開中…";
+            var extractDir = Updater.StageExtractDir();
+            await Task.Run(() => Updater.ExtractZip(zip, extractDir), _cts.Token);
             StatusText.Text = "入れ替え準備中…";
             if (!IsLoaded) return; // 閉じ→完了のレース時は適用しない
-            _applied = true; // ここから先は一時ファイルを置き換えに使うため消さない
-            Updater.ApplyAndRestart(Environment.ProcessId, dest, exe);
+            _applied = true; // ここから先はダウンロード済みファイルを置き換えに使うため消さない
+            Updater.ApplyAndRestart(Environment.ProcessId, extractDir, appDir);
             DialogResult = true;
         }
         catch (OperationCanceledException)

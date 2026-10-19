@@ -248,6 +248,8 @@
                         <StackPanel>
                             <TextBlock Text="データフォルダ" Style="{StaticResource RowHint}" Margin="0" />
                             <TextBlock x:Name="DataText" TextWrapping="Wrap" FontSize="12" Margin="0,2,0,0" />
+                            <TextBlock TextWrapping="Wrap" Style="{StaticResource RowHint}" Margin="0,6,0,0"
+                                       Text="設定・ログイン情報はアプリのフォルダ内(data)にまとめて保存しています。削除するときは、先に「Windows起動時に自動開始」をオフにしてから、アプリのフォルダを丸ごと削除してください。" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource InfoCard}">
