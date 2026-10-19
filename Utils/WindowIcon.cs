@@ -11,9 +11,7 @@ public static class WindowIcon
     {
         try
         {
-            var path = Environment.ProcessPath;
-            if (string.IsNullOrEmpty(path)) return;
-            using var icon = System.Drawing.Icon.ExtractAssociatedIcon(path);
+            using var icon = AppIcon.Extract();
             if (icon is null) return;
             w.Icon = Imaging.CreateBitmapSourceFromHIcon(
                 icon.Handle, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());

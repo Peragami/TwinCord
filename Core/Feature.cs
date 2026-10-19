@@ -3,6 +3,7 @@ namespace TwinCord;
 /// <summary>劣化監視の対象機能。文字列キーのタイポを防ぐ。</summary>
 public enum Feature
 {
+    /// <summary>未読バッジの取得。</summary>
     Badge,
     /// <summary>グローバルホットキー(Ctrl+Alt+1/2/M)の登録。</summary>
     HotkeyGlobal,

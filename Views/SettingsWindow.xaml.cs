@@ -5,20 +5,20 @@ namespace TwinCord;
 
 public partial class SettingsWindow : Window
 {
-    private readonly AppSettings _settings;
+    private readonly AppSettings _draft;
 
     public Func<Task<string>>? Diagnose { get; set; }
     public Func<Task<string>>? CheckUpdate { get; set; }
     // エクスポートは画面の編集内容(draft)を渡す。確定前の変更もバックアップできる。
-    public Func<AppSettings, string?>? ExportRequested { get; set; }
-    public Func<string?>? ImportRequested { get; set; }
+    public Func<AppSettings, string>? ExportRequested { get; set; }
+    public Func<string>? ImportRequested { get; set; }
     public Action? TestNotifyRequested { get; set; }
 
     public SettingsWindow(AppSettings settings)
     {
         InitializeComponent();
         WindowIcon.Set(this);
-        _settings = settings;
+        _draft = settings;
         Loaded += SettingsWindow_Loaded;
     }
 
@@ -27,19 +27,19 @@ public partial class SettingsWindow : Window
     /// <summary>設定値(編集用コピー)を画面へ反映する。</summary>
     private void ApplyToUi()
     {
-        StartBox.IsChecked = _settings.StartWithWindows;
-        TrayBox.IsChecked = _settings.MinimizeToTray;
-        StartMinBox.IsChecked = _settings.StartMinimized;
-        BadgeBox.IsChecked = _settings.UnreadBadge;
-        UnreadBox.IsChecked = _settings.CountUnreadChannels;
-        ReloadBox.IsChecked = _settings.AutoReload;
-        UpdateCheckBox.IsChecked = _settings.AutoUpdateCheck;
-        NotifyBox.IsChecked = _settings.NotifyEnabled;
-        SkipViewedBox.IsChecked = _settings.SkipViewedAccount;
-        HiddenOnlyBox.IsChecked = _settings.NotifyHiddenOnly;
-        HideDlBox.IsChecked = _settings.HideDownloadButton;
-        Zoom1Slider.Value = _settings.Zoom1;
-        Zoom2Slider.Value = _settings.Zoom2;
+        StartBox.IsChecked = _draft.StartWithWindows;
+        TrayBox.IsChecked = _draft.MinimizeToTray;
+        StartMinBox.IsChecked = _draft.StartMinimized;
+        BadgeBox.IsChecked = _draft.UnreadBadge;
+        UnreadBox.IsChecked = _draft.CountUnreadChannels;
+        ReloadBox.IsChecked = _draft.AutoReload;
+        UpdateCheckBox.IsChecked = _draft.AutoUpdateCheck;
+        NotifyBox.IsChecked = _draft.NotifyEnabled;
+        SkipViewedBox.IsChecked = _draft.SkipViewedAccount;
+        HiddenOnlyBox.IsChecked = _draft.NotifyHiddenOnly;
+        HideDlBox.IsChecked = _draft.HideDownloadButton;
+        Zoom1Slider.Value = _draft.Zoom1;
+        Zoom2Slider.Value = _draft.Zoom2;
         UpdateZoomLabels();
 
         VersionText.Text = "バージョン: " + Diagnostics.AppVersion();
@@ -64,7 +64,7 @@ public partial class SettingsWindow : Window
     /// 編集中の設定(「保存」で確定する)。インポート先として使う。
     /// ここへ書いておけば、キャンセルされた場合は元の設定が残る。
     /// </summary>
-    public AppSettings Draft => _settings;
+    public AppSettings Draft => _draft;
 
     /// <summary>編集中の内容を画面へ反映し直す(インポート後に使う)。</summary>
     public void RefreshUi() => ApplyToUi();
@@ -84,19 +84,19 @@ public partial class SettingsWindow : Window
     /// <summary>画面の現在値を編集用コピーへ反映する(OKを押す前のエクスポートでも最新値を出す)。</summary>
     private void ApplyUiToDraft()
     {
-        _settings.StartWithWindows = StartBox.IsChecked == true;
-        _settings.MinimizeToTray = TrayBox.IsChecked == true;
-        _settings.StartMinimized = StartMinBox.IsChecked == true;
-        _settings.UnreadBadge = BadgeBox.IsChecked == true;
-        _settings.CountUnreadChannels = UnreadBox.IsChecked == true;
-        _settings.AutoReload = ReloadBox.IsChecked == true;
-        _settings.AutoUpdateCheck = UpdateCheckBox.IsChecked == true;
-        _settings.NotifyEnabled = NotifyBox.IsChecked == true;
-        _settings.SkipViewedAccount = SkipViewedBox.IsChecked == true;
-        _settings.NotifyHiddenOnly = HiddenOnlyBox.IsChecked == true;
-        _settings.HideDownloadButton = HideDlBox.IsChecked == true;
-        _settings.Zoom1 = AppSettings.ClampZoom(Zoom1Slider.Value);
-        _settings.Zoom2 = AppSettings.ClampZoom(Zoom2Slider.Value);
+        _draft.StartWithWindows = StartBox.IsChecked == true;
+        _draft.MinimizeToTray = TrayBox.IsChecked == true;
+        _draft.StartMinimized = StartMinBox.IsChecked == true;
+        _draft.UnreadBadge = BadgeBox.IsChecked == true;
+        _draft.CountUnreadChannels = UnreadBox.IsChecked == true;
+        _draft.AutoReload = ReloadBox.IsChecked == true;
+        _draft.AutoUpdateCheck = UpdateCheckBox.IsChecked == true;
+        _draft.NotifyEnabled = NotifyBox.IsChecked == true;
+        _draft.SkipViewedAccount = SkipViewedBox.IsChecked == true;
+        _draft.NotifyHiddenOnly = HiddenOnlyBox.IsChecked == true;
+        _draft.HideDownloadButton = HideDlBox.IsChecked == true;
+        _draft.Zoom1 = AppSettings.ClampZoom(Zoom1Slider.Value);
+        _draft.Zoom2 = AppSettings.ClampZoom(Zoom2Slider.Value);
     }
 
     private void Ok_Click(object sender, RoutedEventArgs e)
@@ -148,12 +148,12 @@ public partial class SettingsWindow : Window
         }
         // まだOKしていない変更もバックアップに含める
         ApplyUiToDraft();
-        TransferResult.Text = ExportRequested(_settings) ?? "";
+        TransferResult.Text = ExportRequested(_draft);
     }
 
     private void ImportButton_Click(object sender, RoutedEventArgs e)
     {
-        TransferResult.Text = ImportRequested is null ? "利用できません。" : (ImportRequested() ?? "");
+        TransferResult.Text = ImportRequested is null ? "利用できません。" : ImportRequested();
     }
 
     private void TestNotifyButton_Click(object sender, RoutedEventArgs e)

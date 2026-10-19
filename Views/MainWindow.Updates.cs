@@ -41,13 +41,7 @@ public partial class MainWindow : Window
             var text = $"新しいバージョン {info.Tag} があります。クリックで更新";
             return Dispatcher.InvokeAsync(() =>
             {
-                _tray.ShowBalloon("TwinCord", text,
-                    WinForms.ToolTipIcon.Info, 15000, () =>
-                    {
-                        BringToFront();
-                        OpenUpdateDialog(info);
-                        return Task.CompletedTask;
-                    });
+                ShowBalloon("TwinCord", text, WinForms.ToolTipIcon.Info, 15000, () => OpenUpdateDialog(info));
             }).Task;
         });
 
@@ -60,13 +54,8 @@ public partial class MainWindow : Window
             },
             (message, warning) =>
             {
-                _tray.ShowBalloon("TwinCord", message,
-                    warning ? WinForms.ToolTipIcon.Warning : WinForms.ToolTipIcon.Info,
-                    5000, () =>
-                    {
-                        BringToFront();
-                        return Task.CompletedTask;
-                    });
+                ShowBalloon("TwinCord", message,
+                    warning ? WinForms.ToolTipIcon.Warning : WinForms.ToolTipIcon.Info, 5000);
                 return Task.CompletedTask;
             });
 

@@ -166,45 +166,70 @@ public partial class MainWindow : Window
     {
         try
         {
-            Diagnostics.Log($"TwinCord v{Diagnostics.AppVersion()} 起動");
-            RefreshRail();
-            _history.Load();
-            ApplySettings();
-            _watchdog?.Start();
-            // 「起動時に最小化」はUIの説明どおりトレイへ格納する
-            // (コンストラクタでWindowStateを設定した時点ではStateChanged未購読のためHideされない)
-            if (_settings.StartMinimized && IsVisible)
-            {
-                Hide();
-                _tray.Ensure();
-            }
-            // 起動時から最小化/非表示なら、初回読み込み完了後に表示側もLowになる
-            // (読み込み完了前は SetViewLoaded まで抑制しない)
-            _watchdog?.SetWindowHidden(WindowState == WindowState.Minimized || !IsVisible);
-            // 逐次起動(起動ピークを抑えつつ両方常駐)
-            await EnsureViewAsync(1);
-            RefreshRail();
-            // 2枚目は1枚目の初回表示を待ってから始める(表示中アカの初回表示を優先)。
-            // 常駐が目的なので完了は待たず、失敗だけログに残す。
-            _ = EnsureViewAsync(2).ContinueWith(
-                t => Diagnostics.Log("acc2の初期化に失敗: " + t.Exception?.GetBaseException().Message),
-                CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
-            SwitchTo(_current);
-            if (_watchdog is not null)
-            {
-                _ = _watchdog.TryUpdateAvatarAsync(1);
-                _ = _watchdog.TryUpdateAvatarAsync(2);
-            }
-            if (_settings.AutoUpdateCheck)
-                _ = CheckUpdateOnStartupAsync();
+            await StartAsync();
         }
         catch (Exception ex)
         {
-            var log = Path.Combine(AppSettings.DataFolder(), "startup.log");
-            Directory.CreateDirectory(Path.GetDirectoryName(log)!);
-            await File.WriteAllTextAsync(log, ex.ToString());
-            System.Windows.MessageBox.Show(ex.Message, "TwinCord init error", MessageBoxButton.OK, MessageBoxImage.Error);
+            await ReportStartupErrorAsync(ex);
         }
+    }
+
+    /// <summary>起動処理。順序は起動時間とメモリ抑制の前提に関わるため変えない。</summary>
+    private async Task StartAsync()
+    {
+        Diagnostics.Log($"TwinCord v{Diagnostics.AppVersion()} 起動");
+        RefreshRail();
+        _history.Load();
+        ApplySettings();
+        _watchdog?.Start();
+        HideToTrayIfStartMinimized();
+        // 起動時から最小化/非表示なら、初回読み込み完了後に表示側もLowになる
+        // (読み込み完了前は SetViewLoaded まで抑制しない)
+        _watchdog?.SetWindowHidden(WindowState == WindowState.Minimized || !IsVisible);
+        // 逐次起動(起動ピークを抑えつつ両方常駐)
+        await EnsureViewAsync(1);
+        RefreshRail();
+        StartSecondViewInBackground();
+        SwitchTo(_current);
+        RefreshAccountAvatars();
+        if (_settings.AutoUpdateCheck)
+            _ = CheckUpdateOnStartupAsync();
+    }
+
+    private void HideToTrayIfStartMinimized()
+    {
+        // 「起動時に最小化」はUIの説明どおりトレイへ格納する
+        // (コンストラクタでWindowStateを設定した時点ではStateChanged未購読のためHideされない)
+        if (_settings.StartMinimized && IsVisible)
+        {
+            Hide();
+            _tray.Ensure();
+        }
+    }
+
+    /// <summary>2枚目は1枚目の初回表示を待ってから始める(表示中アカの初回表示を優先)。</summary>
+    private void StartSecondViewInBackground()
+    {
+        // 常駐が目的なので完了は待たず、失敗だけログに残す
+        _ = EnsureViewAsync(2).ContinueWith(
+            t => Diagnostics.Log("acc2の初期化に失敗: " + t.Exception?.GetBaseException().Message),
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+    }
+
+    private void RefreshAccountAvatars()
+    {
+        if (_watchdog is null) return;
+        _ = _watchdog.TryUpdateAvatarAsync(1);
+        _ = _watchdog.TryUpdateAvatarAsync(2);
+    }
+
+    /// <summary>起動に失敗したときは、メッセージとログ(ファイル)を残す。</summary>
+    private static async Task ReportStartupErrorAsync(Exception ex)
+    {
+        var log = Path.Combine(AppSettings.DataFolder(), "startup.log");
+        Directory.CreateDirectory(Path.GetDirectoryName(log)!);
+        await File.WriteAllTextAsync(log, ex.ToString());
+        System.Windows.MessageBox.Show(ex.Message, "TwinCord init error", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
     // ---- トレイ常駐 ----
@@ -220,6 +245,21 @@ public partial class MainWindow : Window
         _watchdog?.SetWindowHidden(false);
     }
 
+    /// <summary>トレイのバルーン。クリックで必ず前面化し、onClickがあれば続けて実行する。</summary>
+    private void ShowBalloon(string title, string text, WinForms.ToolTipIcon icon, int timeoutMs, Action? onClick = null)
+    {
+        _tray.ShowBalloon(title, text, icon, timeoutMs, () =>
+        {
+            BringToFront();
+            onClick?.Invoke();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>クリックでそのアカウントへ切り替える通知用バルーン。</summary>
+    private void ShowAccountBalloon(int n, string title, string text, int timeoutMs)
+        => ShowBalloon(title, text, WinForms.ToolTipIcon.Info, timeoutMs, () => SwitchTo(n));
+
     private void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
         _closing = true;
@@ -232,11 +272,7 @@ public partial class MainWindow : Window
             _watchdog?.SetWindowHidden(true);
             TrimHostMemory();
             Hide();
-            _tray.ShowBalloon("TwinCord", "トレイに格納しました", WinForms.ToolTipIcon.Info, 2000, () =>
-            {
-                BringToFront();
-                return Task.CompletedTask;
-            });
+            ShowBalloon("TwinCord", "トレイに格納しました", WinForms.ToolTipIcon.Info, 2000);
         }
     }
 
