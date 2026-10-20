@@ -1,21 +1,11 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using System.IO;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Interop;
-using Microsoft.Web.WebView2.Core;
-using TwinCord.Services;
-using WinForms = System.Windows.Forms;
 
 namespace TwinCord;
 
 public partial class MainWindow : Window
 {
-
     // ---- アカウント切替 ----
 
     private string AccName(int n) => n == 1 ? _settings.Acc1Name : _settings.Acc2Name;
@@ -48,7 +38,6 @@ public partial class MainWindow : Window
         _watchdog?.WakeUp();
     }
 
-
     // ---- レール表示・改名 ----
 
     private void RefreshRail()
@@ -58,14 +47,13 @@ public partial class MainWindow : Window
         Acc1Label.Text = _settings.Acc1Name;
         Acc2Button.ToolTip = _settings.Acc2Name + (IsMuted(View2) ? " (ミュート中)" : "");
         Acc2Label.Text = _settings.Acc2Name;
-        View1.Visibility = _current == 1 && _view1Ready ? Visibility.Visible : Visibility.Collapsed;
-        View2.Visibility = _current == 2 && _view2Ready ? Visibility.Visible : Visibility.Collapsed;
+        View1.Visibility = _current == 1 && _viewReady[1] ? Visibility.Visible : Visibility.Collapsed;
+        View2.Visibility = _current == 2 && _viewReady[2] ? Visibility.Visible : Visibility.Collapsed;
         Pill1.Visibility = _current == 1 ? Visibility.Visible : Visibility.Collapsed;
         Pill2.Visibility = _current == 2 ? Visibility.Visible : Visibility.Collapsed;
         Acc1Button.Background = _current == 1 ? SelectedBrush : NormalBrush;
         Acc2Button.Background = _current == 2 ? SelectedBrush : NormalBrush;
     }
-
 
     private void RenameAcc1_Click(object sender, RoutedEventArgs e) => RenameAcc(1);
 

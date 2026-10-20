@@ -1,6 +1,5 @@
 using System.IO;
 using System.Net.Http;
-using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using WpfButton = System.Windows.Controls.Button;
