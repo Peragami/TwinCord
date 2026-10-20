@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:TwinCord"
         mc:Ignorable="d"
         Title="設定" Height="600" Width="700"
         WindowStartupLocation="CenterOwner" ResizeMode="CanResize"
@@ -25,91 +26,35 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
                     <TextBlock Text="起動と常駐" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
-                    <Grid Margin="0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <TextBlock Text="Windows起動時に自動開始" Style="{StaticResource RowLabel}" />
-                            <TextBlock Text="PCへのサインイン時に自動で起動します" Style="{StaticResource RowHint}" />
-                        </StackPanel>
-                        <CheckBox Grid.Column="1" x:Name="StartBox" Style="{StaticResource DiscordToggle}" />
-                    </Grid>
+                    <local:ToggleRow x:Name="StartBox"
+                                     Text="Windows起動時に自動開始"
+                                     Hint="PCへのサインイン時に自動で起動します" />
                     <Border Style="{StaticResource DiscordDivider}" />
-                    <Grid Margin="0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <TextBlock Text="閉じる・最小化でトレイに格納" Style="{StaticResource RowLabel}" />
-                            <TextBlock Text="×ボタンでも終了せず常駐します(通知用アイコンは常時表示)" Style="{StaticResource RowHint}" />
-                        </StackPanel>
-                        <CheckBox Grid.Column="1" x:Name="TrayBox" Style="{StaticResource DiscordToggle}" />
-                    </Grid>
+                    <local:ToggleRow x:Name="TrayBox"
+                                     Text="閉じる・最小化でトレイに格納"
+                                     Hint="×ボタンでも終了せず常駐します(通知用アイコンは常時表示)" />
                     <Border Style="{StaticResource DiscordDivider}" />
-                    <Grid Margin="0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <TextBlock Text="起動時に最小化で開始" Style="{StaticResource RowLabel}" />
-                            <TextBlock Text="起動直後からトレイに格納します" Style="{StaticResource RowHint}" />
-                        </StackPanel>
-                        <CheckBox Grid.Column="1" x:Name="StartMinBox" Style="{StaticResource DiscordToggle}" />
-                    </Grid>
+                    <local:ToggleRow x:Name="StartMinBox"
+                                     Text="起動時に最小化で開始"
+                                     Hint="起動直後からトレイに格納します" />
 
                     <TextBlock Text="通知とバッジ" Style="{StaticResource SectionHeader}" />
-                    <Grid Margin="0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <TextBlock Text="非表示アカウントの未読バッジを表示" Style="{StaticResource RowLabel}" />
-                            <TextBlock Text="OFFでも通知の監視自体は継続します" Style="{StaticResource RowHint}" />
-                        </StackPanel>
-                        <CheckBox Grid.Column="1" x:Name="BadgeBox" Style="{StaticResource DiscordToggle}" />
-                    </Grid>
+                    <local:ToggleRow x:Name="BadgeBox"
+                                     Text="非表示アカウントの未読バッジを表示"
+                                     Hint="OFFでも通知の監視自体は継続します" />
                     <Border Style="{StaticResource DiscordDivider}" />
-                    <Grid Margin="0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <TextBlock Text="未読チャンネルもバッジに含める" Style="{StaticResource RowLabel}" />
-                            <TextBlock Text="メンション以外の未読チャンネルも件数に含めます" Style="{StaticResource RowHint}" />
-                        </StackPanel>
-                        <CheckBox Grid.Column="1" x:Name="UnreadBox" Style="{StaticResource DiscordToggle}" />
-                    </Grid>
+                    <local:ToggleRow x:Name="UnreadBox"
+                                     Text="未読チャンネルもバッジに含める"
+                                     Hint="メンション以外の未読チャンネルも件数に含めます" />
                     <Border Style="{StaticResource DiscordDivider}" />
-                    <Grid Margin="0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <TextBlock Text="応答停止時に自動再読み込み" Style="{StaticResource RowLabel}" />
-                            <TextBlock Text="応答が停止したタブだけ自動で再読み込みします" Style="{StaticResource RowHint}" />
-                        </StackPanel>
-                        <CheckBox Grid.Column="1" x:Name="ReloadBox" Style="{StaticResource DiscordToggle}" />
-                    </Grid>
+                    <local:ToggleRow x:Name="ReloadBox"
+                                     Text="応答停止時に自動再読み込み"
+                                     Hint="応答が停止したタブだけ自動で再読み込みします" />
 
                     <TextBlock Text="更新" Style="{StaticResource SectionHeader}" />
-                    <Grid Margin="0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <TextBlock Text="起動時に更新を自動確認" Style="{StaticResource RowLabel}" />
-                            <TextBlock Text="新しいバージョンがあれば通知します" Style="{StaticResource RowHint}" />
-                        </StackPanel>
-                        <CheckBox Grid.Column="1" x:Name="UpdateCheckBox" Style="{StaticResource DiscordToggle}" />
-                    </Grid>
+                    <local:ToggleRow x:Name="UpdateCheckBox"
+                                     Text="起動時に更新を自動確認"
+                                     Hint="新しいバージョンがあれば通知します" />
 
                     <TextBlock Text="設定の持ち運び" Style="{StaticResource SectionHeader}" />
                     <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
@@ -129,41 +74,17 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
                     <TextBlock Text="TwinCordの通知" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
-                    <Grid Margin="0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <TextBlock Text="TwinCordの通知を表示" Style="{StaticResource RowLabel}" />
-                            <TextBlock Text="OFFではバルーンも履歴記録も行いません" Style="{StaticResource RowHint}" />
-                        </StackPanel>
-                        <CheckBox Grid.Column="1" x:Name="NotifyBox" Style="{StaticResource DiscordToggle}" />
-                    </Grid>
+                    <local:ToggleRow x:Name="NotifyBox"
+                                     Text="TwinCordの通知を表示"
+                                     Hint="OFFではバルーンも履歴記録も行いません" />
                     <Border Style="{StaticResource DiscordDivider}" />
-                    <Grid Margin="0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <TextBlock Text="表示中のアカウントの通知は出さない" Style="{StaticResource RowLabel}" />
-                            <TextBlock Text="見ている最中のアカウントの通知を抑えます" Style="{StaticResource RowHint}" />
-                        </StackPanel>
-                        <CheckBox Grid.Column="1" x:Name="SkipViewedBox" Style="{StaticResource DiscordToggle}" />
-                    </Grid>
+                    <local:ToggleRow x:Name="SkipViewedBox"
+                                     Text="表示中のアカウントの通知は出さない"
+                                     Hint="見ている最中のアカウントの通知を抑えます" />
                     <Border Style="{StaticResource DiscordDivider}" />
-                    <Grid Margin="0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <TextBlock Text="最小化・格納中のみ通知する" Style="{StaticResource RowLabel}" />
-                            <TextBlock Text="ウィンドウ表示中は通知を出しません" Style="{StaticResource RowHint}" />
-                        </StackPanel>
-                        <CheckBox Grid.Column="1" x:Name="HiddenOnlyBox" Style="{StaticResource DiscordToggle}" />
-                    </Grid>
+                    <local:ToggleRow x:Name="HiddenOnlyBox"
+                                     Text="最小化・格納中のみ通知する"
+                                     Hint="ウィンドウ表示中は通知を出しません" />
                     <TextBlock Text="Discord側の通知設定（サーバー毎・チャンネル毎）はDiscord内で行ってください。ここではTwinCordが出す通知全体を制御します。" Style="{StaticResource RowHint}" Margin="0,12,0,0" />
                 </StackPanel>
                 </ScrollViewer>
@@ -210,17 +131,9 @@
                     </Border>
                     <TextBlock Text="50%〜200%の範囲で5%刻み。" Style="{StaticResource RowHint}" Margin="0,8,0,0" />
                     <TextBlock Text="Discord表示" Style="{StaticResource SectionHeader}" />
-                    <Grid Margin="0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <TextBlock Text="ダウンロードボタンを隠す" Style="{StaticResource RowLabel}" />
-                            <TextBlock Text="サーバーリストの「アプリをダウンロード」を隠します(すぐに反映)" Style="{StaticResource RowHint}" />
-                        </StackPanel>
-                        <CheckBox Grid.Column="1" x:Name="HideDlBox" Style="{StaticResource DiscordToggle}" />
-                    </Grid>
+                    <local:ToggleRow x:Name="HideDlBox"
+                                     Text="ダウンロードボタンを隠す"
+                                     Hint="サーバーリストの「アプリをダウンロード」を隠します(すぐに反映)" />
                 </StackPanel>
                 </ScrollViewer>
             </TabItem>
