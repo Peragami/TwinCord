@@ -35,12 +35,18 @@ public static class Updater
     public static async Task<UpdateInfo?> FetchLatestAsync(
         HttpClient http, CancellationToken ct = default, Action<string>? log = null)
     {
-        log ??= Log.Write;
         using var req = new HttpRequestMessage(HttpMethod.Get, RepoLatestUrl);
         req.Headers.UserAgent.ParseAdd("TwinCord");
         using var res = await http.SendAsync(req, ct);
         if (!res.IsSuccessStatusCode) return null;
-        using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+        return ParseLatest(await res.Content.ReadAsStringAsync(ct), log);
+    }
+
+    /// <summary>Releases APIの応答(JSON)を解釈する。HTTP取得と分けて扱う。</summary>
+    internal static UpdateInfo? ParseLatest(string json, Action<string>? log = null)
+    {
+        log ??= Log.Write;
+        using var doc = JsonDocument.Parse(json);
         var r = doc.RootElement;
         var tag = r.TryGetProperty("tag_name", out var t) ? (t.GetString() ?? "") : "";
         var latest = tag.TrimStart('v', 'V');
