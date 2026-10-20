@@ -1,12 +1,6 @@
-using System.ComponentModel;
-using System.Diagnostics;
-using System.IO;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Interop;
 using Microsoft.Web.WebView2.Core;
 using TwinCord.Services;
 using WinForms = System.Windows.Forms;
@@ -135,7 +129,6 @@ public partial class MainWindow : Window
         return s[..cut] + "…";
     }
 
-
     private void SendTestNotification()
     {
         var n = _current;
@@ -143,7 +136,6 @@ public partial class MainWindow : Window
         Log.Write("テスト通知送信");
         ShowAccountBalloon(n, "TwinCord - " + acc, "テスト通知\nこれはテストです。クリックでこのアカウントを表示します。", 8000);
     }
-
 
     private void OpenHistory()
     {
@@ -162,7 +154,6 @@ public partial class MainWindow : Window
         _historyWindow = w;
         w.Show();
     }
-
 
     // ---- 劣化通知・自己診断 ----
 

@@ -1,21 +1,10 @@
-using System.ComponentModel;
-using System.Diagnostics;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.Json;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Interop;
-using Microsoft.Web.WebView2.Core;
-using TwinCord.Services;
 using WinForms = System.Windows.Forms;
 
 namespace TwinCord;
 
 public partial class MainWindow : Window
 {
-
     private async Task<string> CheckForUpdateAsync()
     {
         try
