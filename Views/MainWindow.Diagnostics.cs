@@ -17,7 +17,8 @@ public partial class MainWindow : Window
         sb.AppendLine($"TwinCord v{Diagnostics.AppVersion()} / {DateTime.Now:yyyy-MM-dd HH:mm}");
         try
         {
-            long mb = Process.GetCurrentProcess().PrivateMemorySize64 / 1024 / 1024;
+            using var p = Process.GetCurrentProcess();
+            long mb = p.PrivateMemorySize64 / 1024 / 1024;
             sb.AppendLine($"プロセス全体: {mb}MB");
         }
         catch { }
@@ -32,9 +33,11 @@ public partial class MainWindow : Window
         }
         sb.AppendLine(await CheckViewAsync(1, View1, _settings.Zoom1));
         sb.AppendLine(await CheckViewAsync(2, View2, _settings.Zoom2));
-        var bad = _diag.DegradedKeys();
+        var bad = _diag.DegradedDetails();
         sb.Append("劣化中の機能: ");
-        sb.AppendLine(bad.Count == 0 ? "なし" : string.Join(", ", bad.Select(Diagnostics.DisplayName)));
+        sb.AppendLine(bad.Count == 0
+            ? "なし"
+            : string.Join(", ", bad.Select(x => Diagnostics.DisplayName(x.Feature, x.Account))));
         var report = sb.ToString();
         Log.Write("自己診断:\n" + report);
         return report;
@@ -51,7 +54,11 @@ public partial class MainWindow : Window
             var sw = Stopwatch.StartNew();
             var t = core.ExecuteScriptAsync(PageScripts.ReadyState);
             if (await Task.WhenAny(t, Task.Delay(AppConstants.DiagnosticsEvalTimeoutMs)) != t)
+            {
+                // 打ち切った後もCOM側の処理は続くため、例外だけは観測しておく
+                _ = t.ContinueWith(x => { _ = x.Exception; }, TaskScheduler.Default);
                 return $"{label}: 応答なし(タイムアウト)";
+            }
             var state = await t;
             sw.Stop();
             string badge = _watchdog is not null

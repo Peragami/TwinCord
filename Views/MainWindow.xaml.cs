@@ -17,9 +17,6 @@ public partial class MainWindow : Window
     [DllImport("psapi.dll")]
     private static extern bool EmptyWorkingSet(IntPtr hProcess);
 
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
-
     private int _current = 1;
 
     private AppSettings _settings = AppSettings.Load();
@@ -84,19 +81,13 @@ public partial class MainWindow : Window
         StateChanged += MainWindow_StateChanged;
         SourceInitialized += MainWindow_SourceInitialized;
         _diag.Degraded += OnFeatureDegraded;
+        _diag.Recovered += OnFeatureRecovered;
         View1.WebMessageReceived += View_WebMessageReceived;
         View2.WebMessageReceived += View_WebMessageReceived;
     }
 
     private void MainWindow_SourceInitialized(object? sender, EventArgs e)
     {
-        try
-        {
-            var hwnd = new WindowInteropHelper(this).Handle;
-            int dark = 1;
-            DwmSetWindowAttribute(hwnd, 20, ref dark, sizeof(int)); // Win11ダークタイトルバー
-        }
-        catch { }
         try
         {
             // グローバルホットキー: Ctrl+Alt+1/2=切替、Ctrl+Alt+M=表示中ミュート
@@ -135,6 +126,7 @@ public partial class MainWindow : Window
         StartSecondViewInBackground();
         SwitchTo(_current);
         RefreshAccountAvatars();
+        ShowPendingUpdateError();
         if (_settings.AutoUpdateCheck)
             _ = CheckUpdateOnStartupAsync();
     }
@@ -222,6 +214,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         UnregisterGlobalHotkeys();
+        _watchdog?.Stop();
         _tray.Dispose();
         // 書き込み待ちのログ・通知履歴を残す
         _history.Flush();

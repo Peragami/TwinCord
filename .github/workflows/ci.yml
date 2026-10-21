@@ -20,5 +20,16 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Verify version history
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content -Raw TwinCord.csproj
+          $version = @($project.Project.PropertyGroup.Version) | Where-Object { $_ } | Select-Object -First 1
+          if (-not $version) { throw "TwinCord.csproj に Version がありません" }
+          $version = $version.Trim()
+          if (-not (Select-String -Path README.md -Pattern ("^- " + [regex]::Escape($version) + " "))) {
+            throw "README.md のバージョン履歴に $version の項目がありません"
+          }
+
       - name: Test
         run: dotnet test TwinCord.Tests/TwinCord.Tests.csproj -c Release --nologo

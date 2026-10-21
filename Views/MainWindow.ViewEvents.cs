@@ -24,6 +24,11 @@ public partial class MainWindow : Window
         // リンクホバー時の左下URLプレビュー(ステータスバー)を出さない
         try { view.CoreWebView2.Settings.IsStatusBarEnabled = false; } catch { }
         SetZoom(view, zoom);
+        try
+        {
+            view.CoreWebView2.IsMuted = n == 1 ? _settings.Mute1 : _settings.Mute2;
+        }
+        catch { }
         // ホットキー・通知フック・ダウンロードボタン隠しは互いに独立なので、登録はまとめて投げる(直列待ちを減らす)。
         // ダウンロードボタン隠しは設定に関わらず登録し、表示/非表示はページごとにホストから指示する
         // (設定OFFへ切り替えても解除できるようにするため)
@@ -40,6 +45,25 @@ public partial class MainWindow : Window
         // 通知の受け取り経路を記録(原因調査用)
         try
         {
+            // トップレベル遷移はDiscord内だけに限定する。外部サイトをアプリ内に読み込ませない
+            view.CoreWebView2.NavigationStarting += (_, e) =>
+            {
+                if (Discord.IsAllowedNavigation(e.Uri)) return;
+                e.Cancel = true;
+                // ユーザーが外部リンクをクリックした場合は既定ブラウザへ逃がす。
+                // リダイレクト等の自動遷移はアプリ内にもブラウザにも出さない
+                if (e.IsUserInitiated && TryGetExternalUri(e.Uri, out var target))
+                {
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo(target!.AbsoluteUri) { UseShellExecute = true });
+                        Log.Write($"外部リンクをブラウザで開く(acc{n}): {target}");
+                    }
+                    catch (Exception ex) { Log.Write($"外部リンク起動失敗(acc{n}): {ex.Message}"); }
+                    return;
+                }
+                Log.Write($"外部への遷移をブロック(acc{n}): {e.Uri}");
+            };
             bool logged = false;
             view.CoreWebView2.NavigationCompleted += async (_, e) =>
             {
@@ -47,6 +71,8 @@ public partial class MainWindow : Window
                 {
                     _processReloadCount[n] = 0;
                     _reloadFailureShown[n] = false;
+                    // レンダラ異常後の再読み込みなど、表示できた時点で死活劣化を解除する
+                    _diag.ReportOk(Feature.Page, n);
                     OnViewContentLoaded(n, view);
                     // 再読み込み後・起動後も設定どおりにする(ONの適用もOFFの解除も同じ経路で反映される)
                     await ApplyHideDownloadAsync(n, view, _settings.HideDownloadButton);
@@ -69,12 +95,18 @@ public partial class MainWindow : Window
             {
                 try
                 {
-                    // 念のため: JSフックを通らない通知もTwinCordのバルーンで出す
-                    if (!Discord.IsDiscordUri(e.SenderOrigin)) return;
+                    // 送信元が分かる場合はDiscordだけを受理する。分からない場合(サービスワーカー等)は
+                    // トップレベル遷移の制限と併せてDiscord由来とみなす
+                    if (!string.IsNullOrEmpty(e.SenderOrigin) && !Discord.IsDiscordUri(e.SenderOrigin))
+                    {
+                        e.Handled = true; // 外部オリジンの既定UI表示を抑止する
+                        Log.Write($"通知ネイティブを破棄(acc{n}): 送信元={e.SenderOrigin}");
+                        return;
+                    }
                     var title = e.Notification.Title ?? "";
                     var body = e.Notification.Body ?? "";
                     e.Handled = true;
-                    Log.Write($"通知ネイティブ(acc{n}): {title} / 本文{body.Length}文字");
+                    Log.Write($"通知ネイティブ(acc{n}): {ToSingleLine(title, 80)} / 本文{body.Length}文字");
                     var shown = HandlePageNotify(view, JsonSerializer.Serialize(new { title, body }), viaPage: false);
                     // 実際にバルーンを出したときだけ「表示した」とページへ返す
                     if (shown) { try { e.Notification.ReportShown(); } catch { } }
@@ -91,6 +123,13 @@ public partial class MainWindow : Window
                     {
                         e.State = CoreWebView2PermissionState.Allow;
                         e.Handled = true;
+                    }
+                    else if (!Discord.IsDiscordUri(e.Uri))
+                    {
+                        // 外部サイトをアプリ内に読み込ませないのと同じ境界で、権限も与えない
+                        e.State = CoreWebView2PermissionState.Deny;
+                        e.Handled = true;
+                        Log.Write($"権限要求を拒否(acc{n}): 送信元={e.Uri}");
                     }
                 }
                 catch { }
@@ -175,7 +214,7 @@ public partial class MainWindow : Window
             _processReloadCount[acc] = 0;
         _processReloadAt[acc] = now;
         _processReloadCount[acc]++;
-        _diag.ReportFail(Feature.Page);
+        _diag.ReportFail(Feature.Page, acc);
 
         if (_processReloadCount[acc] > 3)
         {

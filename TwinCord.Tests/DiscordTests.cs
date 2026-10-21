@@ -21,4 +21,19 @@ public class DiscordTests
     {
         Assert.Equal(expected, TwinCord.Discord.IsDiscordUri(uri));
     }
+
+    [Theory]
+    [InlineData("https://discord.com/channels/@me", true)]
+    [InlineData("https://canary.discord.com/channels/@me", true)]
+    [InlineData("about:blank", true)]
+    [InlineData("https://support.discord.com/hc", true)]
+    [InlineData("https://discord.com.evil.com/", false)]
+    [InlineData("http://discord.com/channels/@me", false)]
+    [InlineData("file:///C:/Windows/System32/calc.exe", false)]
+    [InlineData("", true)]
+    [InlineData(null, true)]
+    public void IsAllowedNavigation_ReturnsExpected(string? uri, bool expected)
+    {
+        Assert.Equal(expected, TwinCord.Discord.IsAllowedNavigation(uri));
+    }
 }

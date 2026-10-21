@@ -158,7 +158,12 @@ public partial class SettingsWindow : Window
 
     private void TestNotifyButton_Click(object sender, RoutedEventArgs e)
     {
-        TestNotifyRequested?.Invoke();
+        if (TestNotifyRequested is null)
+        {
+            TransferResult.Text = "テスト通知を送信できません。";
+            return;
+        }
+        TestNotifyRequested();
         TransferResult.Text = "テスト通知を送信しました。表示されなければログを確認してください。";
     }
 

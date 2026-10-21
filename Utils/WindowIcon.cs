@@ -9,6 +9,8 @@ public static class WindowIcon
 {
     public static void Set(Window w)
     {
+        // すべてのウィンドウ(設定・履歴・更新・名前変更)のタイトルバーを暗色に揃える
+        w.SourceInitialized += (_, _) => WindowTheme.ApplyDarkTitleBar(w);
         try
         {
             using var icon = AppIcon.Extract();

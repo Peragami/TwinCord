@@ -143,11 +143,20 @@ public partial class MainWindow : Window
             using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
                 AppConstants.RunKeyPath, true);
             if (key is null) return;
-            var exe = Environment.ProcessPath ?? "";
-            if (enable)
-                key.SetValue(AppConstants.RunKeyName, "\"" + exe + "\"");
-            else
+            if (!enable)
+            {
                 key.DeleteValue(AppConstants.RunKeyName, false);
+                return;
+            }
+
+            // 開発時の `dotnet TwinCord.dll` を登録すると、引数なしのdotnet.exeが
+            // 起動して何も表示されない。配布用のTwinCord.exeのときだけ登録する。
+            var exe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(exe)
+                || !string.Equals(Path.GetFileName(exe), AppConstants.AppName + ".exe",
+                    StringComparison.OrdinalIgnoreCase))
+                return;
+            key.SetValue(AppConstants.RunKeyName, "\"" + exe + "\"");
         }
         catch { }
     }

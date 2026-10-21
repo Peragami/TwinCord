@@ -79,6 +79,14 @@ public sealed class UpdateService
                 await onMessage($"新しいバージョン {info.Tag} があります。手動で更新してください。", true);
                 return;
             }
+            if (!Updater.IsValidSha256(info.Sha256))
+            {
+                // ハッシュが無い配布物は検証できないため、自動更新の導線を出さない
+                await onMessage(
+                    $"新しいバージョン {info.Tag} があります。配布ファイルを検証できないため、手動で更新してください。",
+                    true);
+                return;
+            }
             await onNewer(info);
         }
         catch (Exception ex)

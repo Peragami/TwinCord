@@ -56,13 +56,15 @@ public partial class MainWindow : Window
     /// <summary>通知を表示した(または履歴に積んだ)ならtrue。抑制・重複ならfalse。</summary>
     private bool HandlePageNotify(object? sender, string json, bool viaPage)
     {
+        if (_exiting || _closing) return false;
         int n = ReferenceEquals(sender, View2) ? 2 : 1;
         // マスターOFFでは記録も通知もしない
         if (!_settings.NotifyEnabled) { LogSuppressed(n, "通知OFF"); return false; }
-        // 前面で操作中のときだけ「表示中」とみなす(背面にあるだけでは通知を抑えない)
-        bool focused = IsVisible && WindowState != WindowState.Minimized && IsActive;
-        // 格納中のみ通知する設定なら、表示中はすべて出さない
-        if (focused && _settings.NotifyHiddenOnly) { LogSuppressed(n, "表示中は出さない設定"); return false; }
+        // ウィンドウが表示されている間は出さない(設定画面の文言どおり)。
+        // 最小化・トレイ格納中だけ通知する。背面にあるだけでも「表示中」に含める。
+        bool windowVisible = IsVisible && WindowState != WindowState.Minimized;
+        bool focused = windowVisible && IsActive;
+        if (windowVisible && _settings.NotifyHiddenOnly) { LogSuppressed(n, "表示中は出さない設定"); return false; }
         // 見ている最中のアカウントは通知不要(設定で変更可)
         if (focused && _current == n && _settings.SkipViewedAccount) { LogSuppressed(n, "表示中のアカウント"); return false; }
         var acc = AccName(n);
@@ -117,6 +119,8 @@ public partial class MainWindow : Window
             if (sb.Length >= max) break;
             sb.Append(char.IsControl(ch) ? ' ' : ch);
         }
+        // 上限に達した位置がサロゲートペアの前半なら、崩れた文字を残さない
+        if (sb.Length > 0 && char.IsHighSurrogate(sb[^1])) sb.Length--;
         return sb.ToString().Trim();
     }
 
@@ -157,19 +161,32 @@ public partial class MainWindow : Window
 
     // ---- 劣化通知・自己診断 ----
 
-    private void OnFeatureDegraded(Feature key)
+    private void OnFeatureDegraded(Feature key, int account)
     {
         Dispatcher.BeginInvoke(() =>
         {
             UpdateGearAlert();
-            var name = Diagnostics.DisplayName(key);
-            var msg = $"「{name}」が動作しなくなりました。Discord側の更新により TwinCord v{Diagnostics.AppVersion()} が古くなった可能性があります。設定(歯車)→アプリについて→自己診断で詳細を確認してください。";
+            var name = Diagnostics.DisplayName(key, account);
+            var hint = key switch
+            {
+                Feature.HotkeyGlobal => "他のアプリが同じキーを使用している可能性があります。",
+                Feature.HotkeyPage => "Discordページの更新でキー操作スクリプトが動かなくなった可能性があります。",
+                Feature.Badge => "Discord側の画面構造が変わった可能性があります。",
+                Feature.Page => "Discordページの応答がありません。",
+                _ => "Discord側の更新の可能性があります。",
+            };
+            var msg = $"「{name}」が動作しなくなりました。{hint}TwinCord v{Diagnostics.AppVersion()} の設定(歯車)→アプリについて→自己診断で詳細を確認してください。";
             Log.Write("通知: " + msg.Replace(Environment.NewLine, " "));
             if (_tray.IsVisible)
                 ShowBalloon("TwinCord", msg, WinForms.ToolTipIcon.Warning, 8000);
             else
                 System.Windows.MessageBox.Show(msg, "TwinCord", MessageBoxButton.OK, MessageBoxImage.Warning);
         });
+    }
+
+    private void OnFeatureRecovered(Feature key, int account)
+    {
+        Dispatcher.BeginInvoke(() => UpdateGearAlert());
     }
 
     private void UpdateGearAlert()
