@@ -4,12 +4,12 @@ using System.Text;
 namespace TwinCord;
 
 /// <summary>
-/// アプリ内に表示する「変更履歴」。README.md の「バージョン履歴」節をそのまま使う。
-/// 履歴は README にだけ書けばよい(設定画面側と二重管理しないため、埋め込みリソースから読む)。
+/// アプリ内に表示する「変更履歴」。docs/changelog.md の「バージョン履歴」節をそのまま使う。
+/// 履歴は docs/changelog.md にだけ書けばよい(設定画面側と二重管理しないため、埋め込みリソースから読む)。
 /// </summary>
 public static class VersionHistory
 {
-    private const string ResourceName = "TwinCord.README.md";
+    private const string ResourceName = "TwinCord.CHANGELOG.md";
     private const string Heading = "## バージョン履歴";
     private static string? _cached;
 

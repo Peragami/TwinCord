@@ -37,8 +37,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- アプリ内の「変更履歴」はREADMEの該当節をそのまま表示する(二重管理を避けるため埋め込む) -->
-    <EmbeddedResource Include="README.md" LogicalName="TwinCord.README.md" />
+    <!-- アプリ内の「変更履歴」は docs/changelog.md の該当節をそのまま表示する(二重管理を避けるため埋め込む) -->
+    <EmbeddedResource Include="docs\changelog.md" LogicalName="TwinCord.CHANGELOG.md" />
   </ItemGroup>
 
   <ItemGroup>
