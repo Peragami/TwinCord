@@ -1,4 +1,3 @@
-using System.IO;
 using System.Net.Http;
 using System.Windows;
 
@@ -20,15 +19,22 @@ public partial class UpdateDialog : Window
         NotesText.Text = string.IsNullOrWhiteSpace(info.Notes) ? "(変更内容の記載なし)" : info.Notes;
         // 更新は配布zip(TwinCord.zip)を1つダウンロードし、フォルダへミラー同期する方式。
         // dataとmods(将来)は同期の対象外なので、設定・ログイン情報はそのまま残る。
-        if (string.IsNullOrEmpty(info.AssetUrl))
+        if (Diagnostics.IsDevBuild() || !Updater.IsFolderLayout())
+        {
+            // 開発ビルド・単一exeでは入れ替えを行わない(作業中のファイルを壊さないため)
+            UpdateButton.IsEnabled = false;
+            StatusText.Text = "この起動形式では自動更新できません。zip版を手動で配置してください。";
+        }
+        else if (string.IsNullOrEmpty(info.AssetUrl) || !Updater.IsTrustedAssetUrl(info.AssetUrl))
         {
             UpdateButton.IsEnabled = false;
-            StatusText.Text = "配布ファイルが見つかりません。手動で更新してください。";
+            StatusText.Text = "配布ファイルの取得先を確認できないため、自動更新を中止しました。手動で更新してください。";
         }
-        else if (string.IsNullOrEmpty(info.Sha256))
+        else if (!Updater.IsValidSha256(info.Sha256))
         {
-            // 取得元の情報が欠けている場合も入れ替えは行えるが、改ざん検証ができないことを明示する
-            StatusText.Text = "配布ファイルのハッシュが取得できないため、改ざん検証なしで更新します。";
+            // ハッシュが無い・不正な配布物は検証できないため自動更新しない(手動更新へ誘導する)
+            UpdateButton.IsEnabled = false;
+            StatusText.Text = "配布ファイルのハッシュを確認できないため、自動更新を中止しました。GitHub Releasesから手動で更新してください。";
         }
     }
 
@@ -56,8 +62,7 @@ public partial class UpdateDialog : Window
 
     private async void UpdateButton_Click(object sender, RoutedEventArgs e)
     {
-        var exe = Environment.ProcessPath;
-        var appDir = string.IsNullOrEmpty(exe) ? null : Path.GetDirectoryName(exe);
+        var appDir = AppSettings.AppDir();
         if (string.IsNullOrEmpty(appDir))
         {
             StatusText.Text = "実行ファイルの場所が特定できません。手動で更新してください。";
@@ -75,8 +80,6 @@ public partial class UpdateDialog : Window
             var progress = new Progress<double>(v => Progress.Value = v);
             await Updater.DownloadAsync(http, _info.AssetUrl, zip, progress, _cts.Token);
             StatusText.Text = "検証中…";
-            if (string.IsNullOrEmpty(_info.Sha256))
-                Log.Write("更新: ハッシュが無いため改ざん検証をスキップ");
             if (!Updater.VerifySha256(zip, _info.Sha256))
             {
                 StatusText.Text = "配布ファイルの検証に失敗しました。手動で更新してください。";
@@ -87,10 +90,33 @@ public partial class UpdateDialog : Window
             StatusText.Text = "展開中…";
             var extractDir = Updater.StageExtractDir();
             await Task.Run(() => Updater.ExtractZip(zip, extractDir), _cts.Token);
+            if (_cts.IsCancellationRequested || !IsLoaded)
+            {
+                // 閉じた後に展開が完了した場合、OnClosedの掃除より後に残ることがある
+                Updater.CleanStage();
+                return;
+            }
             StatusText.Text = "入れ替え準備中…";
+            var payloadError = Updater.ValidatePayload(extractDir);
+            if (payloadError is not null)
+            {
+                StatusText.Text = "配布ファイルの内容が不正なため更新を中止しました: " + payloadError;
+                Updater.CleanStage();
+                SetBusy(false);
+                return;
+            }
             if (!IsLoaded) return; // 閉じ→完了のレース時は適用しない
-            _applied = true; // ここから先はダウンロード済みファイルを置き換えに使うため消さない
-            Updater.ApplyAndRestart(Environment.ProcessId, extractDir, appDir);
+            try
+            {
+                Updater.ApplyAndRestart(Environment.ProcessId, extractDir, appDir);
+                // BATの起動に成功したら、以降はBATがステージを片付けるため消さない
+                _applied = true;
+            }
+            catch
+            {
+                _applied = false;
+                throw;
+            }
             DialogResult = true;
         }
         catch (OperationCanceledException)
@@ -100,6 +126,7 @@ public partial class UpdateDialog : Window
         }
         catch (Exception ex)
         {
+            if (!_applied) Updater.CleanStage();
             StatusText.Text = "更新に失敗しました: " + ex.Message;
             SetBusy(false);
         }

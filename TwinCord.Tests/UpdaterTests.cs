@@ -12,6 +12,7 @@ public class UpdaterTests
 {
     private const string DefaultAssetUrl =
         "https://github.com/Peragami/TwinCord/releases/download/v1.11.0/TwinCord.zip";
+    private const string ValidHash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     [Fact]
     public void AssetName_IsTheReleaseZipName()
@@ -42,6 +43,10 @@ public class UpdaterTests
     [InlineData("1.10.1", "1.10.0", false)]
     [InlineData("1.10.0", "1.10.0-beta", false)]
     [InlineData("1.10.0", "2.0", true)]
+    [InlineData("1.11.2", "1.11.2.1", true)]
+    [InlineData("1.11.2.1", "1.11.2", false)]
+    [InlineData("1.11.2", "1.11.2.0", false)]
+    [InlineData("1.11.2.0", "1.11.2", false)]
     [InlineData("bad", "1.0.0", false)]
     [InlineData("1.0.0", "bad", false)]
     public void IsNewer_ReturnsExpected(string current, string latest, bool expected)
@@ -52,7 +57,7 @@ public class UpdaterTests
     [Fact]
     public async Task FetchLatestAsync_ParsesTagNotesAssetAndDigest()
     {
-        var json = BuildReleaseJson(DefaultAssetUrl, digest: "sha256:ABC123");
+        var json = BuildReleaseJson(DefaultAssetUrl, digest: "sha256:" + ValidHash);
         using var http = new HttpClient(new StubHttpMessageHandler(json));
 
         var info = await Updater.FetchLatestAsync(http);
@@ -62,7 +67,33 @@ public class UpdaterTests
         Assert.Equal("1.11.0", info.Version);
         Assert.Equal("release notes", info.Notes);
         Assert.Equal(DefaultAssetUrl, info.AssetUrl);
-        Assert.Equal("ABC123", info.Sha256);
+        Assert.Equal(ValidHash, info.Sha256);
+    }
+
+    [Fact]
+    public async Task FetchLatestAsync_MalformedDigestIsNotUsed()
+    {
+        var json = BuildReleaseJson(DefaultAssetUrl, digest: "sha256:ABC123");
+        using var http = new HttpClient(new StubHttpMessageHandler(json));
+        var logs = new List<string>();
+
+        var info = await Updater.FetchLatestAsync(http, log: logs.Add);
+
+        Assert.NotNull(info);
+        Assert.Equal("", info!.Sha256);
+        Assert.Contains(logs, m => m.Contains("形式が不正", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task FetchLatestAsync_MissingDigestYieldsEmptyHash()
+    {
+        var json = BuildReleaseJson(DefaultAssetUrl, digest: null);
+        using var http = new HttpClient(new StubHttpMessageHandler(json));
+
+        var info = await Updater.FetchLatestAsync(http);
+
+        Assert.NotNull(info);
+        Assert.Equal("", info!.Sha256);
     }
 
     [Fact]
@@ -136,10 +167,26 @@ public class UpdaterTests
     }
 
     [Fact]
-    public void VerifySha256_EmptyExpectedSkipsVerification()
+    public void VerifySha256_EmptyOrMalformedExpectedIsRejected()
     {
         using var temp = new TempFolder();
-        Assert.True(Updater.VerifySha256(Path.Combine(temp.Path, "missing.bin"), ""));
+        var path = Path.Combine(temp.Path, "data.bin");
+        File.WriteAllText(path, "hello");
+
+        // 期待値が無い・短い・16進数でない場合は「検証成功」にしない
+        Assert.False(Updater.VerifySha256(path, ""));
+        Assert.False(Updater.VerifySha256(path, "ABC123"));
+        Assert.False(Updater.VerifySha256(path, new string('Z', 64)));
+    }
+
+    [Theory]
+    [InlineData(ValidHash, true)]
+    [InlineData("abc123", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsValidSha256_ReturnsExpected(string? value, bool expected)
+    {
+        Assert.Equal(expected, Updater.IsValidSha256(value));
     }
 
     [Fact]
@@ -198,6 +245,77 @@ public class UpdaterTests
         Assert.False(File.Exists(Path.Combine(temp.Path, "evil.txt")));
     }
 
+    [Fact]
+    public void ValidatePayload_RequiresExecutableLibraryAndRuntimeFiles()
+    {
+        using var temp = new TempFolder();
+
+        Assert.Contains("TwinCord.exe", Updater.ValidatePayload(temp.Path));
+        File.WriteAllText(Path.Combine(temp.Path, "TwinCord.exe"), "exe");
+        Assert.Contains("TwinCord.dll", Updater.ValidatePayload(temp.Path));
+        File.WriteAllText(Path.Combine(temp.Path, "TwinCord.dll"), "dll");
+        Assert.Contains("TwinCord.deps.json", Updater.ValidatePayload(temp.Path));
+        File.WriteAllText(Path.Combine(temp.Path, "TwinCord.deps.json"), "{}");
+        Assert.Contains("runtimeconfig.json", Updater.ValidatePayload(temp.Path));
+        File.WriteAllText(Path.Combine(temp.Path, "TwinCord.runtimeconfig.json"), "{}");
+        Assert.Null(Updater.ValidatePayload(temp.Path));
+    }
+
+    [Fact]
+    public void ValidatePayload_RejectsEmptyFiles()
+    {
+        using var temp = new TempFolder();
+        File.WriteAllBytes(Path.Combine(temp.Path, "TwinCord.exe"), []);
+        File.WriteAllText(Path.Combine(temp.Path, "TwinCord.dll"), "dll");
+        File.WriteAllText(Path.Combine(temp.Path, "TwinCord.deps.json"), "{}");
+        File.WriteAllText(Path.Combine(temp.Path, "TwinCord.runtimeconfig.json"), "{}");
+
+        Assert.Contains("空", Updater.ValidatePayload(temp.Path));
+    }
+
+    [Fact]
+    public void TakeUpdateErrorFrom_ReadsAndDeletesTheLog()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, "update-error.log");
+        File.WriteAllText(path, new string('x', 2500) + "\r\nsync failed 8");
+
+        var text = Updater.TakeUpdateErrorFrom(path);
+
+        Assert.NotNull(text);
+        Assert.Contains("sync failed 8", text);
+        Assert.True(text!.Length <= 2000);
+        Assert.False(File.Exists(path));
+        Assert.Null(Updater.TakeUpdateErrorFrom(path));
+    }
+
+    [Fact]
+    public void TakeUpdateErrorFrom_MissingFileReturnsNull()
+    {
+        using var temp = new TempFolder();
+        Assert.Null(Updater.TakeUpdateErrorFrom(Path.Combine(temp.Path, "missing.log")));
+    }
+
+    [Fact]
+    public void UpdateBat_HasPayloadGuardAndBackupRestore()
+    {
+        var text = string.Join("\n", Updater.BuildUpdateBatLines());
+
+        Assert.Contains("payload missing TwinCord.exe", text);
+        Assert.Contains("payload missing TwinCord.dll", text);
+        Assert.Contains("payload missing TwinCord.deps.json", text);
+        Assert.Contains("payload missing TwinCord.runtimeconfig.json", text);
+        Assert.Contains("ping -n 2 127.0.0.1", text);
+        Assert.Contains("TC_BACKUP", text);
+        Assert.Contains("robocopy \"%TC_BACKUP%\" \"%TC_DST%\" /MIR", text);
+
+        // 復元の/MIRで消されないよう、失敗理由は復元後に書く
+        var syncFailure = Assert.Single(
+            Updater.BuildUpdateBatLines(), l => l.Contains("sync failed"));
+        Assert.True(syncFailure.IndexOf("robocopy", StringComparison.Ordinal)
+            < syncFailure.IndexOf("update-error.log", StringComparison.Ordinal));
+    }
+
     private static void WriteEntry(ZipArchive archive, string name, string content)
     {
         using var writer = new StreamWriter(archive.CreateEntry(name).Open());
@@ -206,7 +324,7 @@ public class UpdaterTests
 
     private static string BuildReleaseJson(
         string assetUrl, string assetName = "TwinCord.zip",
-        string? digest = "sha256:ABC123", string tag = "v1.11.0")
+        string? digest = null, string tag = "v1.11.0")
     {
         return JsonSerializer.Serialize(new
         {

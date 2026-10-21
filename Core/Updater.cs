@@ -49,7 +49,7 @@ public static class Updater
         using var doc = JsonDocument.Parse(json);
         var r = doc.RootElement;
         var tag = r.TryGetProperty("tag_name", out var t) ? (t.GetString() ?? "") : "";
-        var latest = tag.TrimStart('v', 'V');
+        var latest = tag.Trim().TrimStart('v', 'V');
         if (string.IsNullOrEmpty(latest)) return null;
         var notes = r.TryGetProperty("body", out var b) ? (b.GetString() ?? "") : "";
         string assetUrl = "";
@@ -63,7 +63,14 @@ public static class Updater
                 assetUrl = a.TryGetProperty("browser_download_url", out var au) ? (au.GetString() ?? "") : "";
                 var digest = a.TryGetProperty("digest", out var dg) ? (dg.GetString() ?? "") : "";
                 if (digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
-                    sha256 = digest.Substring(7);
+                {
+                    var candidate = digest[7..].Trim();
+                    // 長さ・文字種が違う値を「検証済み」と扱わない。空のままなら自動更新は中止する
+                    if (IsValidSha256(candidate))
+                        sha256 = candidate;
+                    else
+                        log("更新: SHA256の形式が不正なため無視: " + digest);
+                }
                 break;
             }
         }
@@ -79,15 +86,34 @@ public static class Updater
 
     public static bool IsNewer(string current, string latest)
     {
-        try
-        {
-            return new Version(current.Split('-')[0]).CompareTo(new Version(latest.Split('-')[0])) < 0;
-        }
-        catch
-        {
+        if (!TryParseVersion(current, out var c) || !TryParseVersion(latest, out var l))
             return false;
-        }
+        return c < l;
     }
+
+    /// <summary>
+    /// 比較用にバージョンを4要素へ正規化する。1.11.2 と 1.11.2.0 を同じものとして扱い、
+    /// 1.11.2.1 のような4要素タグでも更新ループにならないようにする。
+    /// </summary>
+    internal static bool TryParseVersion(string? raw, out Version version)
+    {
+        version = new Version(0, 0, 0, 0);
+        var text = (raw ?? "").Trim();
+        // プレリリース表記(-beta等)は比較対象外。latestはGitHubのlatestなので通常は付かない
+        var dash = text.IndexOf('-');
+        if (dash >= 0) text = text[..dash];
+        if (!Version.TryParse(text, out var parsed)) return false;
+        version = new Version(
+            Math.Max(parsed.Major, 0),
+            Math.Max(parsed.Minor, 0),
+            parsed.Build >= 0 ? parsed.Build : 0,
+            parsed.Revision >= 0 ? parsed.Revision : 0);
+        return true;
+    }
+
+    /// <summary>SHA256の期待値として妥当か(64桁の16進数)。</summary>
+    public static bool IsValidSha256(string? hex) =>
+        hex is { Length: 64 } && hex.All(Uri.IsHexDigit);
 
     public static async Task DownloadAsync(HttpClient http, string url, string destPath,
         IProgress<double> progress, CancellationToken ct)
@@ -110,11 +136,12 @@ public static class Updater
     }
 
     /// <summary>
-    /// ダウンロード済みファイルのSHA256を照合する。期待値が空なら検証なしでtrue。
+    /// ダウンロード済みファイルのSHA256を照合する。期待値が空・不正なら検証失敗とする
+    /// (ハッシュが無い配布物を「検証済み」として受け入れない)。
     /// </summary>
     public static bool VerifySha256(string path, string expectedHex)
     {
-        if (string.IsNullOrEmpty(expectedHex)) return true;
+        if (!IsValidSha256(expectedHex)) return false;
         try
         {
             using var sha = System.Security.Cryptography.SHA256.Create();
@@ -128,11 +155,13 @@ public static class Updater
         }
     }
 
-    /// <summary>ダウンロード済みzipと展開先を消す(失敗は無視)。</summary>
+    /// <summary>ダウンロード済みzip・展開先・更新BAT・バックアップを消す(失敗は無視)。</summary>
     public static void CleanStage()
     {
         try { if (File.Exists(StageZipPath())) File.Delete(StageZipPath()); } catch { }
         try { if (Directory.Exists(StageExtractDir())) Directory.Delete(StageExtractDir(), true); } catch { }
+        try { if (Directory.Exists(StageBackupDir())) Directory.Delete(StageBackupDir(), true); } catch { }
+        try { if (File.Exists(UpdateBatPath())) File.Delete(UpdateBatPath()); } catch { }
     }
 
     public static string StageDir() => Path.Combine(Path.GetTempPath(), "TwinCordUpdate");
@@ -141,6 +170,73 @@ public static class Updater
 
     /// <summary>zipの展開先(ここからアプリのフォルダへ同期する)。</summary>
     public static string StageExtractDir() => Path.Combine(StageDir(), "new");
+
+    /// <summary>更新前にアプリ本体を退避する場所(失敗時に戻す)。</summary>
+    public static string StageBackupDir() => Path.Combine(StageDir(), "backup");
+
+    public static string UpdateBatPath() => Path.Combine(StageDir(), "update.bat");
+
+    /// <summary>更新BATが失敗理由を残す場所(アプリ本体のフォルダ)。</summary>
+    public static string UpdateErrorLogPath() => Path.Combine(
+        AppSettings.AppDir(), "update-error.log");
+
+    /// <summary>
+    /// 前回の更新失敗記録を読み取って削除する(起動時に一度だけ知らせるため)。
+    /// 読めない/消せない場合はnullを返し、次回起動で再試行する。
+    /// </summary>
+    public static string? TakeUpdateError() => TakeUpdateErrorFrom(UpdateErrorLogPath());
+
+    internal static string? TakeUpdateErrorFrom(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return null;
+            var text = File.ReadAllText(path, Encoding.UTF8).Trim();
+            try { File.Delete(path); } catch { }
+            if (text.Length > 2000) text = text[^2000..];
+            return text;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 展開内容がアプリとして起動できる最低限の構成か。空zipやビルドミスのまま
+    /// /MIRするとアプリ本体を消してしまうため、適用前に必ず確認する。
+    /// </summary>
+    internal static string? ValidatePayload(string sourceDir)
+    {
+        var exe = Path.Combine(sourceDir, AppConstants.AppName + ".exe");
+        var dll = Path.Combine(sourceDir, AppConstants.AppName + ".dll");
+        var deps = Path.Combine(sourceDir, AppConstants.AppName + ".deps.json");
+        var runtimeConfig = Path.Combine(sourceDir, AppConstants.AppName + ".runtimeconfig.json");
+        if (!File.Exists(exe)) return AppConstants.AppName + ".exe が含まれていません";
+        if (!File.Exists(dll)) return AppConstants.AppName + ".dll が含まれていません";
+        if (!File.Exists(deps)) return AppConstants.AppName + ".deps.json が含まれていません";
+        if (!File.Exists(runtimeConfig)) return AppConstants.AppName + ".runtimeconfig.json が含まれていません";
+        try
+        {
+            if (new FileInfo(exe).Length == 0) return AppConstants.AppName + ".exe が空です";
+            if (new FileInfo(dll).Length == 0) return AppConstants.AppName + ".dll が空です";
+            if (new FileInfo(deps).Length == 0) return AppConstants.AppName + ".deps.json が空です";
+            if (new FileInfo(runtimeConfig).Length == 0) return AppConstants.AppName + ".runtimeconfig.json が空です";
+            // ファイルバージョンが読める場合は、現在より新しいことも確認する
+            var fileVersion = System.Diagnostics.FileVersionInfo.GetVersionInfo(exe).FileVersion;
+            if (!string.IsNullOrWhiteSpace(fileVersion)
+                && TryParseVersion(fileVersion, out var parsed)
+                && !IsNewer(Diagnostics.AppVersion(), parsed.ToString()))
+            {
+                return $"配布ファイルのバージョン({parsed})が現在({Diagnostics.AppVersion()})以下です";
+            }
+        }
+        catch
+        {
+            // バージョン情報が読めないだけなら、存在とサイズの確認で続行する
+        }
+        return null;
+    }
 
     /// <summary>
     /// 配布zipを展開する。展開先の外へ出るエントリは.NET側が拒否する
@@ -179,14 +275,26 @@ public static class Updater
         "@echo off",
         ":wait",
         "tasklist /FI \"PID eq %TC_PID%\" 2>nul | find \"%TC_PID%\" >nul",
-        "if %ERRORLEVEL%==0 (timeout /t 1 /nobreak >nul & goto wait)",
+        // timeout.exeは入力リダイレクト時に待機しないことがあるため、pingで1秒待つ
+        "if %ERRORLEVEL%==0 (ping -n 2 127.0.0.1 >nul & goto wait)",
+        // 展開内容の最終確認。壊れたzipのまま/MIRするとアプリ本体が消えるため、必須ファイルが無ければ中止する
+        "if not exist \"%TC_SRC%\\TwinCord.exe\" (echo %DATE% %TIME% payload missing TwinCord.exe>> \"%TC_DST%\\update-error.log\" & del \"%TC_ZIP%\" >nul 2>&1 & start \"\" \"%TC_EXE%\" & del \"%~f0\" >nul 2>&1 & exit /b 1)",
+        "if not exist \"%TC_SRC%\\TwinCord.dll\" (echo %DATE% %TIME% payload missing TwinCord.dll>> \"%TC_DST%\\update-error.log\" & del \"%TC_ZIP%\" >nul 2>&1 & start \"\" \"%TC_EXE%\" & del \"%~f0\" >nul 2>&1 & exit /b 1)",
+        "if not exist \"%TC_SRC%\\TwinCord.deps.json\" (echo %DATE% %TIME% payload missing TwinCord.deps.json>> \"%TC_DST%\\update-error.log\" & del \"%TC_ZIP%\" >nul 2>&1 & start \"\" \"%TC_EXE%\" & del \"%~f0\" >nul 2>&1 & exit /b 1)",
+        "if not exist \"%TC_SRC%\\TwinCord.runtimeconfig.json\" (echo %DATE% %TIME% payload missing TwinCord.runtimeconfig.json>> \"%TC_DST%\\update-error.log\" & del \"%TC_ZIP%\" >nul 2>&1 & start \"\" \"%TC_EXE%\" & del \"%~f0\" >nul 2>&1 & exit /b 1)",
+        // 置換前のアプリ本体を退避する(data/modsは対象外)。失敗時はここから戻す
+        "if exist \"%TC_BACKUP%\" rd /s /q \"%TC_BACKUP%\"",
+        "robocopy \"%TC_DST%\" \"%TC_BACKUP%\" /MIR /XD \"%TC_SRC%\\%TC_DATANAME%\" \"%TC_SRC%\\%TC_MODSNAME%\" \"%TC_DST%\\%TC_DATANAME%\" \"%TC_DST%\\%TC_MODSNAME%\" \"%TC_BACKUP%\\%TC_DATANAME%\" \"%TC_BACKUP%\\%TC_MODSNAME%\" /R:3 /W:1 /NFL /NDL /NJH /NJS >nul",
+        "if %ERRORLEVEL% GEQ 8 (echo %DATE% %TIME% backup failed %ERRORLEVEL% \"%TC_DST%\" to \"%TC_BACKUP%\">> \"%TC_DST%\\update-error.log\" & del \"%TC_ZIP%\" >nul 2>&1 & start \"\" \"%TC_EXE%\" & del \"%~f0\" >nul 2>&1 & exit /b 1)",
         // 除外は「送信元と送信先の両方のパス」で指定する(片方だけだと、新旧両方に存在する
         // フォルダの中身が/MIRで消される・または送信先だけにあるフォルダが削除される)
         "robocopy \"%TC_SRC%\" \"%TC_DST%\" /MIR /XD \"%TC_SRC%\\%TC_DATANAME%\" \"%TC_SRC%\\%TC_MODSNAME%\" \"%TC_DST%\\%TC_DATANAME%\" \"%TC_DST%\\%TC_MODSNAME%\" /R:3 /W:1 /NFL /NDL /NJH /NJS >nul",
-        // robocopyの8以上は失敗(0-7は成功)。失敗しても起動はして、原因を残す
-        "if %ERRORLEVEL% GEQ 8 (echo %DATE% %TIME% sync failed %ERRORLEVEL% \"%TC_SRC%\" to \"%TC_DST%\">> \"%~dp0update-error.log\" & start \"\" \"%TC_EXE%\" & del \"%~f0\" >nul 2>&1 & exit /b 1)",
+        // robocopyの8以上は失敗(0-7は成功)。失敗したら退避から戻して旧バージョンで起動する
+        // 失敗理由は復元後に書く(復元の/MIRでupdate-error.logが消えるため)
+        "if %ERRORLEVEL% GEQ 8 (del \"%TC_ZIP%\" >nul 2>&1 & robocopy \"%TC_BACKUP%\" \"%TC_DST%\" /MIR /XD \"%TC_BACKUP%\\%TC_DATANAME%\" \"%TC_BACKUP%\\%TC_MODSNAME%\" \"%TC_DST%\\%TC_DATANAME%\" \"%TC_DST%\\%TC_MODSNAME%\" /R:3 /W:1 /NFL /NDL /NJH /NJS >nul & echo %DATE% %TIME% sync failed %ERRORLEVEL% \"%TC_SRC%\" to \"%TC_DST%\">> \"%TC_DST%\\update-error.log\" & start \"\" \"%TC_EXE%\" & del \"%~f0\" >nul 2>&1 & exit /b 1)",
         "start \"\" \"%TC_EXE%\"",
         "rd /s /q \"%TC_SRC%\" >nul 2>&1",
+        "rd /s /q \"%TC_BACKUP%\" >nul 2>&1",
         "del \"%TC_ZIP%\" >nul 2>&1",
         "del \"%~f0\" >nul 2>&1",
     };
@@ -199,7 +307,7 @@ public static class Updater
     /// </summary>
     public static void ApplyAndRestart(int currentPid, string sourceDir, string targetDir)
     {
-        var bat = Path.Combine(StageDir(), "update.bat");
+        var bat = UpdateBatPath();
         Directory.CreateDirectory(StageDir());
         File.WriteAllLines(bat, BuildUpdateBatLines(), Encoding.ASCII);
         var psi = new ProcessStartInfo
@@ -212,6 +320,7 @@ public static class Updater
         psi.Environment["TC_PID"] = currentPid.ToString();
         psi.Environment["TC_SRC"] = sourceDir;
         psi.Environment["TC_DST"] = targetDir;
+        psi.Environment["TC_BACKUP"] = StageBackupDir();
         psi.Environment["TC_DATANAME"] = AppConstants.DataFolderName;
         psi.Environment["TC_MODSNAME"] = AppConstants.ModsFolderName;
         psi.Environment["TC_EXE"] = Path.Combine(targetDir, AppConstants.AppName + ".exe");

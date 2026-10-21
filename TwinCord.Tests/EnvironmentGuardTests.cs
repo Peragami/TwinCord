@@ -47,18 +47,30 @@ public class EnvironmentGuardTests
     public void BuildUpdateBatLines_ExcludesDataAndModsOnBothSides()
     {
         var lines = Updater.BuildUpdateBatLines();
-        var robocopy = Assert.Single(lines, l => l.StartsWith("robocopy", StringComparison.Ordinal));
+        var apply = Assert.Single(lines, l => l.StartsWith("robocopy \"%TC_SRC%\"", StringComparison.Ordinal));
+        var backup = Assert.Single(lines, l => l.StartsWith("robocopy \"%TC_DST%\"", StringComparison.Ordinal));
 
         // /XDは送信元と送信先の両方のパスを指定する(片方だけだとdataの中身や新規フォルダが消える)
-        Assert.Contains("\"%TC_SRC%\\%TC_DATANAME%\"", robocopy);
-        Assert.Contains("\"%TC_SRC%\\%TC_MODSNAME%\"", robocopy);
-        Assert.Contains("\"%TC_DST%\\%TC_DATANAME%\"", robocopy);
-        Assert.Contains("\"%TC_DST%\\%TC_MODSNAME%\"", robocopy);
-        Assert.Contains("/MIR", robocopy);
-        // 失敗時(8以上)は原因を残して、起動だけはする
-        var failure = Assert.Single(lines, l => l.Contains("GEQ 8", StringComparison.Ordinal));
-        Assert.Contains("update-error.log", failure);
-        Assert.Contains("start \"\" \"%TC_EXE%\"", failure);
+        Assert.Contains("\"%TC_SRC%\\%TC_DATANAME%\"", apply);
+        Assert.Contains("\"%TC_SRC%\\%TC_MODSNAME%\"", apply);
+        Assert.Contains("\"%TC_DST%\\%TC_DATANAME%\"", apply);
+        Assert.Contains("\"%TC_DST%\\%TC_MODSNAME%\"", apply);
+        Assert.Contains("/MIR", apply);
+
+        // 更新前のバックアップもdata/modsを対象外にする
+        Assert.Contains("\"%TC_DST%\\%TC_DATANAME%\"", backup);
+        Assert.Contains("\"%TC_DST%\\%TC_MODSNAME%\"", backup);
+        Assert.Contains("TC_BACKUP", backup);
+
+        // 失敗時(8以上)は原因を残し、バックアップから戻して旧バージョンで起動する
+        var failures = lines.Where(l => l.Contains("GEQ 8", StringComparison.Ordinal)).ToList();
+        Assert.Equal(2, failures.Count);
+        Assert.All(failures, f =>
+        {
+            Assert.Contains("update-error.log", f);
+            Assert.Contains("start \"\" \"%TC_EXE%\"", f);
+        });
+        Assert.Contains("robocopy \"%TC_BACKUP%\" \"%TC_DST%\" /MIR", failures[1]);
         // 反映前にプロセスの終了を待つ
         Assert.Contains(lines, l => l.StartsWith(":wait", StringComparison.Ordinal));
         // batはASCIIのみ(cmdがOEMコードページで読むため)

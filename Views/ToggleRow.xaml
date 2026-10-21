@@ -14,11 +14,13 @@
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
-        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+        <StackPanel Grid.Column="0" Margin="0,0,12,0" Cursor="Hand"
+                    MouseLeftButtonUp="Labels_MouseLeftButtonUp">
             <TextBlock Text="{Binding Text, ElementName=Root}" Style="{StaticResource RowLabel}" />
             <TextBlock Text="{Binding Hint, ElementName=Root}" Style="{StaticResource RowHint}" />
         </StackPanel>
         <CheckBox Grid.Column="1" Style="{StaticResource DiscordToggle}"
+                  AutomationProperties.Name="{Binding Text, ElementName=Root}"
                   IsChecked="{Binding IsChecked, ElementName=Root, Mode=TwoWay}" />
     </Grid>
 </UserControl>

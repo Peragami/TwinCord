@@ -31,6 +31,41 @@ public class HistoryStoreTests
     }
 
     [Fact]
+    public void Load_SkipsRecordsWithInvalidAccount()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, AppConstants.HistoryFileName);
+        File.WriteAllText(path, """
+            [
+              { "Time": "2026-10-19T01:02:03", "Account": 0, "AccountName": "zero", "Text": "a" },
+              { "Time": "2026-10-19T01:02:04", "Account": 1, "AccountName": "one", "Text": "b" },
+              { "Time": "2026-10-19T01:02:05", "Account": 5, "AccountName": "five", "Text": "c" },
+              { "Time": "2026-10-19T01:02:06", "Account": 2, "AccountName": "two", "Text": "d" }
+            ]
+            """);
+
+        var store = new HistoryStore(temp.Path);
+        store.Load();
+
+        Assert.Equal(2, store.Items.Count);
+        Assert.Equal(new[] { 1, 2 }, store.Items.Select(i => i.Account));
+    }
+
+    [Fact]
+    public void Add_IgnoresInvalidAccount()
+    {
+        using var temp = new TempFolder();
+        var store = new HistoryStore(temp.Path);
+
+        store.Add(new NotificationRecord(DateTime.Now, 0, "zero", "a"));
+        store.Add(new NotificationRecord(DateTime.Now, 3, "three", "b"));
+        store.Add(new NotificationRecord(DateTime.Now, 1, "one", "c"));
+
+        Assert.Single(store.Items);
+        Assert.Equal(1, store.Items[0].Account);
+    }
+
+    [Fact]
     public void Load_KeepsOnlyNewestThirty()
     {
         using var temp = new TempFolder();

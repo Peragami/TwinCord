@@ -17,6 +17,7 @@ public partial class MainWindow : Window
 
     private async void SwitchTo(int n)
     {
+        if (n is not (1 or 2)) return;
         _current = n;
         if (n == 1) Badge1.Visibility = Visibility.Collapsed;
         else Badge2.Visibility = Visibility.Collapsed;
@@ -71,6 +72,8 @@ public partial class MainWindow : Window
             var c = view.CoreWebView2;
             if (c is null) return;
             c.IsMuted = !c.IsMuted;
+            if (n == 1) _settings.Mute1 = c.IsMuted; else _settings.Mute2 = c.IsMuted;
+            _settings.Save();
             Log.Write($"{AccName(n)} ミュート{(c.IsMuted ? "ON" : "OFF")}");
             RefreshRail();
         }
@@ -105,16 +108,45 @@ public partial class MainWindow : Window
         {
             Title = "名前の変更",
             Width = 300,
-            Height = 150,
+            Height = 160,
             Owner = this,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             ResizeMode = ResizeMode.NoResize,
+            Background = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0x31, 0x33, 0x38)),
+            Foreground = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0xDB, 0xDE, 0xE1)),
         };
+        WindowIcon.Set(dlg);
         var panel = new StackPanel { Margin = new Thickness(12) };
-        var box = new System.Windows.Controls.TextBox { Text = current, MaxLength = AppSettings.NameMaxLength };
+        var box = new System.Windows.Controls.TextBox
+        {
+            Text = current,
+            MaxLength = AppSettings.NameMaxLength,
+            Margin = new Thickness(0, 6, 0, 0),
+            Padding = new Thickness(8, 6, 8, 6),
+            Background = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0x1E, 0x1F, 0x22)),
+            Foreground = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0xDB, 0xDE, 0xE1)),
+            BorderBrush = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0x1E, 0x1F, 0x22)),
+            CaretBrush = System.Windows.Media.Brushes.White,
+        };
         var btns = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
         var ok = new System.Windows.Controls.Button { Content = "OK", Width = 75, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
         var cancel = new System.Windows.Controls.Button { Content = "キャンセル", Width = 75, IsCancel = true };
+        try
+        {
+            var styles = new ResourceDictionary
+            {
+                Source = new Uri("Views/DiscordStyles.xaml", UriKind.Relative),
+            };
+            dlg.Resources.MergedDictionaries.Add(styles);
+            ok.Style = (Style)dlg.FindResource("BtnPrimary");
+            cancel.Style = (Style)dlg.FindResource("BtnSecondary");
+        }
+        catch { }
         ok.Click += (_, _) => dlg.DialogResult = true;
         btns.Children.Add(ok);
         btns.Children.Add(cancel);

@@ -33,6 +33,8 @@ public sealed class HistoryStore
 
     public void Add(NotificationRecord item)
     {
+        // 表示側がアカウント番号でビューを選ぶため、1/2以外は保存しない
+        if (item.Account is not (1 or 2)) return;
         lock (_gate)
         {
             _items.Insert(0, item);
@@ -54,6 +56,9 @@ public sealed class HistoryStore
             foreach (var item in list)
             {
                 if (item is null) continue;
+                // 手編集・破損で1/2以外が入っていても、履歴のダブルクリックで
+                // 存在しないビューを開かないようにする
+                if (item.Account is not (1 or 2)) continue;
                 loaded.Add(item with
                 {
                     AccountName = string.IsNullOrWhiteSpace(item.AccountName)

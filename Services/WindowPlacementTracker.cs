@@ -37,20 +37,41 @@ public sealed class WindowPlacementTracker
             height = Math.Clamp(height, MinSize, maxH);
             _window.Width = width;
             _window.Height = height;
-            if (s.WinLeft is double left && s.WinTop is double top)
+            if (s.WinLeft is double left && s.WinTop is double top
+                && double.IsFinite(left) && double.IsFinite(top))
             {
-                // モニター構成変更で完全画面外になっていたら既定位置のままにする
+                // モニター構成変更で画面外へ出ていた場合は、操作できる位置まで戻す
                 var vs = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
                     SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
-                if (vs.IntersectsWith(new Rect(left, top, width, height)))
-                {
-                    _window.Left = left;
-                    _window.Top = top;
-                }
+                var (visibleLeft, visibleTop) = ClampToVisible(vs, left, top, width);
+                _window.Left = visibleLeft;
+                _window.Top = visibleTop;
             }
             if (s.WinMaximized) _window.WindowState = WindowState.Maximized;
         }
         catch { }
+    }
+
+    private const double MinVisible = 80;
+
+    /// <summary>
+    /// 保存された位置が画面外でも、少なくともタイトルバー付近が画面内に残るよう補正する。
+    /// マルチモニターでは仮想スクリーン全体を基準にする。
+    /// </summary>
+    internal static (double Left, double Top) ClampToVisible(
+        Rect screen, double left, double top, double width)
+    {
+        if (screen.Width <= 0 || screen.Height <= 0) return (left, top);
+
+        var minLeft = screen.Left - Math.Max(0, width - MinVisible);
+        var maxLeft = screen.Right - MinVisible;
+        if (minLeft > maxLeft) minLeft = maxLeft;
+
+        var minTop = screen.Top;
+        var maxTop = screen.Bottom - MinVisible;
+        if (minTop > maxTop) minTop = maxTop;
+
+        return (Math.Clamp(left, minLeft, maxLeft), Math.Clamp(top, minTop, maxTop));
     }
 
     public void Save()

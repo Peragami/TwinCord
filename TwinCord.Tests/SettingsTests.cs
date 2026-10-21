@@ -46,6 +46,16 @@ public class SettingsTests
     }
 
     [Fact]
+    public void CleanName_DoesNotSplitSurrogatePair()
+    {
+        // 24文字目が絵文字の前半になる場合、崩れた文字を残さず23文字で切る
+        var raw = new string('x', AppSettings.NameMaxLength - 1) + "😀";
+        var cleaned = AppSettings.CleanName(raw);
+        Assert.Equal(AppSettings.NameMaxLength - 1, cleaned.Length);
+        Assert.Equal(new string('x', AppSettings.NameMaxLength - 1), cleaned);
+    }
+
+    [Fact]
     public void Defaults_MatchDocumentedBehavior()
     {
         var s = new AppSettings();
@@ -60,6 +70,8 @@ public class SettingsTests
         Assert.False(s.CountUnreadChannels);
         Assert.False(s.StartMinimized);
         Assert.False(s.NotifyHiddenOnly);
+        Assert.False(s.Mute1);
+        Assert.False(s.Mute2);
         Assert.Equal("Acc1", s.Acc1Name);
         Assert.Equal("Acc2", s.Acc2Name);
         Assert.Equal(1.0, s.Zoom1);
@@ -83,6 +95,96 @@ public class SettingsTests
         Assert.False(File.Exists(path));
         Assert.True(File.Exists(path + ".bak"));
         Assert.Contains("壊れている", File.ReadAllText(path + ".bak"));
+    }
+
+    [Fact]
+    public void LoadFrom_DoesNotMoveFileOnIoError()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, AppConstants.SettingsFileName);
+        File.WriteAllText(path, """{"Acc1Name":"Keep"}""");
+
+        // 他プロセスが排他ロックしている状態を再現する。破損ではないので退避しない
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            var s = AppSettings.LoadFrom(path);
+            Assert.Equal("Acc1", s.Acc1Name);
+            // 内容を確認できなかったので、次回保存時は元ファイルを退避してから上書きする
+            Assert.True(s.LoadFailed);
+        }
+
+        Assert.True(File.Exists(path));
+        Assert.False(File.Exists(path + ".bak"));
+        Assert.Equal("""{"Acc1Name":"Keep"}""", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void LoadFrom_RetriesNameMigrationWhenLegacyFileIsLocked()
+    {
+        using var temp = new TempFolder();
+        var settingsPath = Path.Combine(temp.Path, AppConstants.SettingsFileName);
+        var namesPath = Path.Combine(temp.Path, AppConstants.LegacyNamesFileName);
+        File.WriteAllText(settingsPath, """{"NamesMigrated":false}""");
+        File.WriteAllText(namesPath, "Alice\nBob");
+
+        // 旧names.txtが一時的に読めない場合、移行済みにして名前を失わない
+        using (new FileStream(namesPath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var s = AppSettings.LoadFrom(settingsPath);
+            Assert.False(s.NamesMigrated);
+            Assert.Equal("Acc1", s.Acc1Name);
+        }
+
+        // ロックが解けた次の起動では移行できる
+        var retried = AppSettings.LoadFrom(settingsPath);
+        Assert.True(retried.NamesMigrated);
+        Assert.Equal("Alice", retried.Acc1Name);
+        Assert.Equal("Bob", retried.Acc2Name);
+    }
+
+    [Fact]
+    public void Save_BacksUpSettingsThatCouldNotBeReadBeforeOverwriting()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, AppConstants.SettingsFileName);
+        File.WriteAllText(path, """{"Acc1Name":"Original"}""");
+
+        AppSettings s;
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            s = AppSettings.LoadFrom(path);
+            Assert.True(s.LoadFailed);
+        }
+
+        s.Acc1Name = "Changed";
+        s.SaveTo(path);
+
+        var backup = File.ReadAllText(path + ".bak");
+        Assert.Contains("Original", backup);
+        var reloaded = AppSettings.LoadFrom(path);
+        Assert.Equal("Changed", reloaded.Acc1Name);
+        Assert.False(reloaded.LoadFailed);
+    }
+
+    [Fact]
+    public void LoadFailed_IsNotSerialized()
+    {
+        var json = JsonSerializer.Serialize(new AppSettings { LoadFailed = true });
+        Assert.DoesNotContain("LoadFailed", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LoadFrom_DoesNotOverwriteExistingBackup()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, AppConstants.SettingsFileName);
+        File.WriteAllText(path, "{ 壊れている ");
+        File.WriteAllText(path + ".bak", "previous backup");
+
+        _ = AppSettings.LoadFrom(path);
+
+        Assert.Equal("previous backup", File.ReadAllText(path + ".bak"));
+        Assert.NotEmpty(Directory.GetFiles(temp.Path, AppConstants.SettingsFileName + ".bak.*"));
     }
 
     [Fact]
@@ -136,6 +238,8 @@ public class SettingsTests
             SkipViewedAccount = false,
             NotifyHiddenOnly = true,
             HideDownloadButton = false,
+            Mute1 = true,
+            Mute2 = false,
             Acc1Name = "Alice",
             Acc2Name = "Bob",
             NamesMigrated = true,

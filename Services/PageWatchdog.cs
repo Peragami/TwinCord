@@ -32,6 +32,7 @@ public sealed class PageWatchdog
     private readonly bool[] _loaded = new bool[3];
     // バッジ/通話の初回確認結果をログに残す(セッション中1回)
     private readonly bool[] _probeLogged = new bool[3];
+    private readonly bool[] _avatarFailureLogged = new bool[3];
     private bool _windowHidden;
     private DispatcherTimer? _badgeTimer;
     private DispatcherTimer? _healthTimer;
@@ -39,6 +40,7 @@ public sealed class PageWatchdog
     private bool _badgeBusy;
     private bool _healthBusy;
     private bool _avatarBusy;
+    private bool _stopped;
     // 変化が無いときはポーリング間隔を伸ばす(常駐時のCPU/バッテリー節約)
     private int _unchangedPolls;
     private static readonly TimeSpan FastPoll = TimeSpan.FromSeconds(5);
@@ -92,6 +94,8 @@ public sealed class PageWatchdog
 
     public void Start()
     {
+        if (_badgeTimer is not null) return;
+        _stopped = false;
         _badgeTimer = new DispatcherTimer { Interval = FastPoll };
         _badgeTimer.Tick += BadgeTimer_Tick;
         _badgeTimer.Start();
@@ -101,6 +105,18 @@ public sealed class PageWatchdog
         _avatarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _avatarTimer.Tick += AvatarTimer_Tick;
         _avatarTimer.Start();
+    }
+
+    /// <summary>終了時にタイマーを止める(終了処理中の新規発火を防ぐ)。</summary>
+    public void Stop()
+    {
+        _stopped = true;
+        _badgeTimer?.Stop();
+        _healthTimer?.Stop();
+        _avatarTimer?.Stop();
+        _badgeTimer = null;
+        _healthTimer = null;
+        _avatarTimer = null;
     }
 
     /// <summary>
@@ -147,7 +163,7 @@ public sealed class PageWatchdog
 
     private async void AvatarTimer_Tick(object? sender, EventArgs e)
     {
-        if (_avatarBusy) return;
+        if (_stopped || _avatarBusy) return;
         _avatarBusy = true;
         try
         {
@@ -169,16 +185,22 @@ public sealed class PageWatchdog
             var raw = await PageScripts.EvalAsync(core, PageScripts.Avatar);
             if (raw is null) return;
             await _avatars[n].UpdateAsync(raw);
+            _avatarFailureLogged[n] = false;
         }
         catch (Exception ex)
         {
-            Log.Write($"アバター更新失敗(acc{n}): {ex.Message}");
+            // オフライン中は30秒ごとに同じ失敗が起きるため、復旧するまで1回だけ記録する
+            if (!_avatarFailureLogged[n])
+            {
+                _avatarFailureLogged[n] = true;
+                Log.Write($"アバター更新失敗(acc{n}): {ex.Message}");
+            }
         }
     }
 
     private async void BadgeTimer_Tick(object? sender, EventArgs e)
     {
-        if (_badgeBusy) return;
+        if (_stopped || _badgeBusy) return;
         _badgeBusy = true;
         bool changed = false;
         try
@@ -278,10 +300,10 @@ public sealed class PageWatchdog
             var raw = await PageScripts.EvalAsync(core, PageScripts.Probe(includeUnread));
             if (!PageScripts.TryParseProbe(raw, out var probe))
             {
-                _diag.ReportFail(Feature.Badge); // 応答なし/スクリプト異常=Discord側の構造変化の疑い
+                _diag.ReportFail(Feature.Badge, n); // 応答なし/スクリプト異常=Discord側の構造変化の疑い
                 return false;
             }
-            _diag.ReportOk(Feature.Badge);
+            _diag.ReportOk(Feature.Badge, n);
             // 初回だけ結果を残す(Discord側のDOM変更で判定不能になったときに気づけるように)
             if (!_probeLogged[n])
             {
@@ -313,7 +335,7 @@ public sealed class PageWatchdog
         }
         catch
         {
-            _diag.ReportFail(Feature.Badge);
+            _diag.ReportFail(Feature.Badge, n);
             return false;
         }
     }
@@ -332,21 +354,26 @@ public sealed class PageWatchdog
 
     private async void HealthTimer_Tick(object? sender, EventArgs e)
     {
-        if (!_settings().AutoReload || _healthBusy) return;
+        if (_stopped || _healthBusy) return;
         _healthBusy = true;
         try
         {
-            int current = _current();
-            // 表示中は再読み込みせず報告のみ(読書中のページを奪わない)
+            if (!_settings().AutoReload) return;
+            // 表示中は再読み込みしない。表示状態はawaitの後に再確認する(待機中に切り替わるため)
             for (int n = 1; n <= 2; n++)
             {
-                if (Slot(n).IsReady() && !InVoice(n)) await PingAsync(Slot(n).View, current != n);
+                if (Slot(n).IsReady() && !InVoice(n)) await PingAsync(n, Slot(n).View);
             }
+        }
+        catch (Exception ex)
+        {
+            // async voidの例外はアプリ全体へ抜けるため、ここで必ず止める
+            Log.Write("ページ死活監視の処理に失敗: " + ex.Message);
         }
         finally { _healthBusy = false; }
     }
 
-    private async Task PingAsync(WpfWebView2 view, bool allowReload)
+    private async Task PingAsync(int n, WpfWebView2 view)
     {
         try
         {
@@ -355,16 +382,37 @@ public sealed class PageWatchdog
             var state = await PageScripts.EvalAsync(core, PageScripts.ReadyState);
             if (state is null)
             {
-                _diag.ReportFail(Feature.Page);
-                if (allowReload) { try { core.Reload(); } catch { } }
+                _diag.ReportFail(Feature.Page, n);
+                ReloadIfHidden(n, core);
                 return;
             }
-            _diag.ReportOk(Feature.Page);
+            _diag.ReportOk(Feature.Page, n);
         }
         catch
         {
-            _diag.ReportFail(Feature.Page);
-            if (allowReload) { try { view.CoreWebView2?.Reload(); } catch { } }
+            _diag.ReportFail(Feature.Page, n);
+            try { ReloadIfHidden(n, view.CoreWebView2); } catch { }
         }
+    }
+
+    /// <summary>
+    /// 非表示のときだけ再読み込みする。await中にユーザーが切り替えた場合は、
+    /// 読んでいるページを奪わないよう何もしない。
+    /// </summary>
+    private void ReloadIfHidden(int n, CoreWebView2? core)
+    {
+        if (core is null) return;
+        if (!ShouldReloadHidden(n, _current(), _windowHidden, InVoice(n))) return;
+        try { core.Reload(); } catch { }
+    }
+
+    /// <summary>
+    /// そのページを再読み込みしてよいか。ウィンドウ自体が非表示(トレイ格納・最小化)なら
+    /// 表示中アカウントも見えていないため対象に含める。通話中は音声を守るため除外する。
+    /// </summary>
+    internal static bool ShouldReloadHidden(int account, int current, bool windowHidden, bool inVoice)
+    {
+        if (account is not (1 or 2) || inVoice) return false;
+        return windowHidden || account != current;
     }
 }

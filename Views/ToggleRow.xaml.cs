@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 
 namespace TwinCord;
 
@@ -6,6 +7,13 @@ namespace TwinCord;
 public partial class ToggleRow : System.Windows.Controls.UserControl
 {
     public ToggleRow() => InitializeComponent();
+
+    /// <summary>見出し側をクリックしてもスイッチを切り替えられるようにする。</summary>
+    private void Labels_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        IsChecked = IsChecked != true;
+        e.Handled = true;
+    }
 
     public static readonly DependencyProperty TextProperty =
         DependencyProperty.Register(nameof(Text), typeof(string), typeof(ToggleRow),

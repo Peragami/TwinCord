@@ -24,12 +24,12 @@ public partial class MainWindow : Window
         try
         {
             var scriptId = await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(script);
-            if (feature is Feature f) _diag.ReportOk(f);
+            if (feature is Feature f) _diag.ReportOk(f, n);
             Log.Write($"{label}スクリプト登録(acc{n}): {scriptId}");
         }
         catch (Exception ex)
         {
-            if (feature is Feature f) _diag.ReportFail(f);
+            if (feature is Feature f) _diag.ReportFail(f, n);
             Log.Write($"{label}スクリプト登録失敗(acc{n}): {ex.Message}");
         }
     }

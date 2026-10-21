@@ -32,7 +32,11 @@ public partial class App : System.Windows.Application
             args.Handled = true; // 常駐アプリのため落とさず継続する
         };
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
             Log.Write("未処理例外(致命的): " + args.ExceptionObject);
+            // プロセス終了前に、非同期ログの最後の1行を書き切る
+            Log.Flush(1000);
+        };
         TaskScheduler.UnobservedTaskException += (_, args) =>
         {
             Log.Write("未処理タスク例外: " + args.Exception);

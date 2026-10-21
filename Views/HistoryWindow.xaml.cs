@@ -46,7 +46,11 @@ public partial class HistoryWindow : Window
     {
         var i = HistoryList.SelectedIndex;
         if (i < 0 || i >= _items.Count) return;
-        _jump(_items[i].Account);
+        var item = _items[i];
+        if (item is null) return;
+        var account = item.Account;
+        if (account is not (1 or 2)) return;
+        _jump(account);
         Close();
     }
 

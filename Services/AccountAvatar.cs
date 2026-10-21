@@ -38,11 +38,11 @@ public sealed class AccountAvatar
 
     /// <summary>
     /// ページから取得したURLが前回と違えば画像を取り直して表示を更新する。
-    /// URLが不正・取得失敗のときは何もしない(表示は現状維持)。
+    /// URLが不正・保存失敗のときは何もしない(表示は現状維持)。通信例外は呼び出し側で処理する。
     /// </summary>
     public async Task UpdateAsync(string rawUrl)
     {
-        var url = rawUrl.Trim('"');
+        var url = (rawUrl ?? "").Trim().Trim('"');
         if (string.IsNullOrEmpty(url)) return;
 
         // ページDOM由来のURLをそのまま取得しない。
@@ -166,9 +166,15 @@ public sealed class AccountAvatar
         return img;
     }
 
-    private static string InitialOf(string name)
+    /// <summary>
+    /// 頭文字を1文字だけ返す。絵文字や結合文字をUTF-16の途中で切らないよう、
+    /// 1コード単位ではなく書記素クラスタ(テキスト要素)単位で取り出す。
+    /// </summary>
+    internal static string InitialOf(string? name)
     {
         var t = (name ?? "").Trim();
-        return t.Length == 0 ? "?" : t[..1].ToUpperInvariant();
+        if (t.Length == 0) return "?";
+        var e = System.Globalization.StringInfo.GetTextElementEnumerator(t);
+        return e.MoveNext() ? e.GetTextElement().ToUpperInvariant() : "?";
     }
 }

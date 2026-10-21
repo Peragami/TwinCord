@@ -5,6 +5,10 @@ taskkill /F /IM TwinCord.exe 2>nul
 rem 1) Build the release files into a clean staging folder. User data never exists here,
 rem    so the zip can never contain it (settings, logs, Discord login data).
 if exist publish-zip rmdir /s /q publish-zip
+if exist publish-zip (
+  echo [ERROR] could not clean publish-zip folder. 1>&2
+  exit /b 1
+)
 dotnet publish -c Release -r win-x64 --self-contained true -o publish-zip
 if errorlevel 1 (
   echo [ERROR] dotnet publish failed. 1>&2
